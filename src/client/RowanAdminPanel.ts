@@ -671,8 +671,12 @@ export class RowanAdminPanel extends LitElement {
             hostCheats: {
               infiniteGold: d.hostCheatInfiniteGold,
               infiniteTroops: d.hostCheatInfiniteTroops,
-              goldMultiplier: d.hostCheatGoldMultiplier,
-              startingGold: d.hostCheatStartingGold,
+              ...(d.hostCheatGoldMultiplier === null
+                ? {}
+                : { goldMultiplier: d.hostCheatGoldMultiplier }),
+              ...(d.hostCheatStartingGold === null
+                ? {}
+                : { startingGold: d.hostCheatStartingGold }),
             },
           }
         : {}),
@@ -684,7 +688,7 @@ export class RowanAdminPanel extends LitElement {
       const result = await this.request<AdminGame>("/create_game", {
         method: "POST",
         body: JSON.stringify({
-          config: this.configBody(false),
+          ...this.configBody(false),
           listed: this.listed,
           featured: this.listed && this.featured,
           label:
