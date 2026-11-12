@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fetchCustomTribes } from "../../src/server/CustomTribes";
 
-// fetchCustomTribes resolves its endpoint from ServerEnv.jwtIssuer(), which
+// fetchCustomTribes resolves its endpoint from ServerEnv.accountApiBase(), which
 // throws if DOMAIN is unset.
 process.env.DOMAIN ??= "localhost";
 

@@ -172,6 +172,7 @@ export class StoreModal extends BaseModal {
             { key: "cosmetics", label: translateText("store.cosmetics") },
             { key: "bundles", label: translateText("store.bundles") },
             { key: "effects", label: translateText("store.effects") },
+            { key: "tribes", label: translateText("store.tribes") },
           ]
         : [
             { key: "packs", label: translateText("store.packs") },
