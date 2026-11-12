@@ -32,6 +32,7 @@ vi.mock("../../src/client/Utils", () => ({
 }));
 
 import type { UserMeResponse } from "@openfront/shared/ApiSchemas";
+import { ClientEnv } from "../../src/client/ClientEnv";
 import { NavAccountMenu } from "../../src/client/components/NavAccountMenu";
 import { gamePortal } from "../../src/client/GamePortal";
 import { updateAccountNavButton } from "../../src/client/NavAccountButton";
@@ -110,6 +111,32 @@ describe("nav-account-menu", () => {
     await el.updateComplete;
     await click(trigger());
     expect(itemKeys()).toEqual(["sign-in"]);
+  });
+
+  it("routes local guest sign-in and admin account menu to the admin panel", async () => {
+    const selfHosted = vi.spyOn(ClientEnv, "selfHosted").mockReturnValue(true);
+    const openAdmin = vi.fn();
+    window.addEventListener("open-rowan-admin", openAdmin);
+    try {
+      fireUserMe(false);
+      await el.updateComplete;
+      await click(trigger());
+      await click(document.querySelector('[data-menu-item="sign-in"]')!);
+      expect(openAdmin).toHaveBeenCalledTimes(1);
+
+      fireUserMe({
+        user: { local: { username: "rowkav" } },
+        player: { publicId: "local-admin" },
+      } as unknown as UserMeResponse);
+      await el.updateComplete;
+      await click(trigger());
+      expect(itemKeys()).toEqual(["admin-panel", "log-out"]);
+      await click(document.querySelector('[data-menu-item="admin-panel"]')!);
+      expect(openAdmin).toHaveBeenCalledTimes(2);
+    } finally {
+      window.removeEventListener("open-rowan-admin", openAdmin);
+      selfHosted.mockRestore();
+    }
   });
 
   it("toggles the menu for a signed-in user", async () => {

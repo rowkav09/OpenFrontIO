@@ -122,6 +122,16 @@ describe("updateAccountNavButton", () => {
     expect(hidden(nav.emailBadge)).toBe(false);
   });
 
+  it("shows a local admin name without a sign-in prompt", () => {
+    updateAccountNavButton(userMe({ local: { username: "rowkav" } }));
+    expect(nav.signInText.textContent).toBe("rowkav");
+    expect(hidden(nav.signInText)).toBe(false);
+    expect(hidden(nav.mobile.signInText)).toBe(true);
+    expect(hidden(nav.personIcon)).toBe(false);
+    updateAccountNavButton(false);
+    expect(nav.signInText.textContent).toBe("main.sign_in");
+  });
+
   it("prefers the Discord avatar over Steam for a linked account", () => {
     updateAccountNavButton(
       userMe({

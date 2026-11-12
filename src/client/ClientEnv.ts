@@ -240,6 +240,9 @@ export class ClientEnv {
     return ClientEnv.get().jwtAudience;
   }
   static selfHosted(): boolean {
+    // Some standalone UI surfaces (and their tests) render before the page
+    // bootstrap is available. Absence never opts into local account routing.
+    if (typeof window === "undefined" || !window.BOOTSTRAP_CONFIG) return false;
     return ClientEnv.get().selfHosted;
   }
   static instanceId(): string {

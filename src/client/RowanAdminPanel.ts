@@ -431,6 +431,7 @@ export class RowanAdminPanel extends LitElement {
     super.connectedCallback();
     window.addEventListener("keydown", this.onKeyDown);
     window.addEventListener("popstate", this.onLocationChanged);
+    window.addEventListener("open-rowan-admin", this.onOpenAdmin);
     document.addEventListener(
       "join-lobby",
       this.onLobbyJoined as EventListener,
@@ -449,6 +450,7 @@ export class RowanAdminPanel extends LitElement {
   disconnectedCallback(): void {
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("popstate", this.onLocationChanged);
+    window.removeEventListener("open-rowan-admin", this.onOpenAdmin);
     document.removeEventListener(
       "join-lobby",
       this.onLobbyJoined as EventListener,
@@ -462,6 +464,11 @@ export class RowanAdminPanel extends LitElement {
     event.preventDefault();
     this.open = !this.open;
     if (this.open) void this.opened();
+  };
+
+  private onOpenAdmin = () => {
+    this.open = true;
+    void this.opened();
   };
 
   private onLocationChanged = () => {
@@ -610,6 +617,9 @@ export class RowanAdminPanel extends LitElement {
     if (this.tab === "game") void this.loadGameDetails();
     const game = this.games.find((g) => g.gameID === id);
     if (game?.gameConfig) this.fillDraft(game.gameConfig);
+    this.listed = game?.listed === true;
+    this.featured = game?.featured === true;
+    this.label = game?.label ?? "";
   }
 
   private fillDraft(config: Partial<GameConfig>) {
@@ -638,6 +648,41 @@ export class RowanAdminPanel extends LitElement {
     value: ConfigDraft[K],
   ) {
     this.draft = { ...this.draft, [key]: value };
+  }
+
+  // Some browser automation and mobile keyboards change a number field's
+  // displayed value without firing `change` before the action button runs.
+  // Read the live controls at submission so the sent config matches what the
+  // admin sees, including the last focused field.
+  private syncNumericDraftFromDom(): boolean {
+    let next = this.draft;
+    for (const input of this.renderRoot.querySelectorAll<HTMLInputElement>(
+      "input[data-admin-number]",
+    )) {
+      const key = input.dataset.adminNumber;
+      if (!key) continue;
+      if (
+        !input.hasAttribute("data-optional-number") &&
+        input.value.trim() === ""
+      ) {
+        this.error = `${input.previousElementSibling?.textContent?.trim() ?? key} is required.`;
+        input.focus();
+        return false;
+      }
+      const min = Number(input.min);
+      const max = Number(input.max);
+      const value = input.hasAttribute("data-optional-number")
+        ? optionalNumber(input.value, min, max)
+        : numberValue(
+            input.value,
+            Number(next[key as keyof ConfigDraft]) || min,
+            min,
+            max,
+          );
+      next = { ...next, [key]: value };
+    }
+    this.draft = next;
+    return true;
   }
 
   private configBody(includeEmptyHostCheats = true): Partial<GameConfig> {
@@ -684,6 +729,7 @@ export class RowanAdminPanel extends LitElement {
   }
 
   private async createGame() {
+    if (!this.syncNumericDraftFromDom()) return;
     await this.act(async () => {
       const result = await this.request<AdminGame>("/create_game", {
         method: "POST",
@@ -696,6 +742,15 @@ export class RowanAdminPanel extends LitElement {
           accent: this.listed && this.featured ? this.accent : undefined,
         }),
       });
+      if (
+        result.gameConfig?.bots !== this.draft.bots ||
+        (this.draft.gameMode === GameMode.FFA &&
+          result.gameConfig?.maxPlayers !== this.draft.maxPlayers)
+      ) {
+        throw new Error(
+          "Lobby was created, but its bot or player limit did not match the form.",
+        );
+      }
       this.selectedId = result.gameID;
       await this.loadGames();
       this.tab = "game";
@@ -704,10 +759,41 @@ export class RowanAdminPanel extends LitElement {
 
   private async updateGame() {
     if (!this.selectedId) return;
-    await this.sendIntent(
-      { type: "update_game_config", config: this.configBody() },
-      "Lobby settings updated.",
-    );
+    const game = this.selectedGame();
+    if (!game) return;
+    if (!this.syncNumericDraftFromDom()) return;
+    await this.act(async () => {
+      const id = encodeURIComponent(this.selectedId);
+      // Delist before applying a change that might enable private host perks;
+      // list after applying a change that removes them.
+      if (game.listed && !this.listed) {
+        await this.request(`/game/${id}/listing`, {
+          method: "POST",
+          body: JSON.stringify({ listed: false }),
+        });
+      }
+      const updated = await this.request<AdminGame>(`/game/${id}/intent`, {
+        method: "POST",
+        body: JSON.stringify({
+          type: "update_game_config",
+          config: this.configBody(),
+        }),
+      });
+      if (
+        updated.gameConfig?.bots !== this.draft.bots ||
+        (this.draft.gameMode === GameMode.FFA &&
+          updated.gameConfig?.maxPlayers !== this.draft.maxPlayers)
+      ) {
+        throw new Error("The server did not apply the bot or player limit.");
+      }
+      if (!game.listed && this.listed) {
+        await this.request(`/game/${id}/listing`, {
+          method: "POST",
+          body: JSON.stringify({ listed: true }),
+        });
+      }
+      await this.loadGames();
+    }, "Lobby settings and visibility updated.");
   }
 
   private async sendIntent(intent: unknown, success: string) {
@@ -885,11 +971,19 @@ export class RowanAdminPanel extends LitElement {
       <label>${label}</label
       ><input
         type="number"
+        data-admin-number=${key}
         min=${min}
         max=${max}
         step=${step}
         .value=${value === null ? "" : String(value)}
-        @change=${(e: Event) => this.updateDraft(key, numberValue((e.target as HTMLInputElement).value, Number(value) || min, min, max) as never)}
+        @input=${(e: Event) => {
+          const raw = (e.target as HTMLInputElement).value;
+          if (raw !== "")
+            this.updateDraft(
+              key,
+              numberValue(raw, Number(value) || min, min, max) as never,
+            );
+        }}
       />
     </div>`;
   }
@@ -906,12 +1000,14 @@ export class RowanAdminPanel extends LitElement {
       <label>${label}</label
       ><input
         type="number"
+        data-admin-number=${key}
+        data-optional-number="true"
         min=${min}
         max=${max}
         step=${step}
         placeholder="Default"
         .value=${value === null ? "" : String(value)}
-        @change=${(e: Event) => this.updateDraft(key, optionalNumber((e.target as HTMLInputElement).value, min, max) as never)}
+        @input=${(e: Event) => this.updateDraft(key, optionalNumber((e.target as HTMLInputElement).value, min, max) as never)}
       />
     </div>`;
   }

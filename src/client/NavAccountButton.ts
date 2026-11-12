@@ -126,8 +126,27 @@ function updateInstance(
     avatarEl?.classList.add("hidden");
     personIconEl?.classList.remove("hidden");
     emailBadgeEl?.classList.add("hidden");
-    signInTextEl?.classList.remove("hidden");
+    if (signInTextEl) {
+      signInTextEl.setAttribute("data-i18n", "main.sign_in");
+      signInTextEl.textContent = translateText("main.sign_in");
+      signInTextEl.classList.remove("hidden");
+    }
     // Restore border when showing signin state
+    setBordered(true);
+  };
+
+  const showLocalLoggedIn = (username: string) => {
+    avatarEl?.classList.add("hidden");
+    personIconEl?.classList.remove("hidden");
+    emailBadgeEl?.classList.add("hidden");
+    if (signInTextEl) {
+      signInTextEl.removeAttribute("data-i18n");
+      signInTextEl.textContent = username;
+      // The mobile trigger has no text label, so leave it icon-only.
+      if (trigger.hasAttribute("data-account-border")) {
+        signInTextEl.classList.remove("hidden");
+      }
+    }
     setBordered(true);
   };
 
@@ -185,6 +204,13 @@ function updateInstance(
     userMeResponse !== false ? userMeResponse.user.google : undefined;
   if (google) {
     showEmailLoggedIn();
+    return;
+  }
+
+  const local =
+    userMeResponse !== false ? userMeResponse.user.local : undefined;
+  if (local) {
+    showLocalLoggedIn(local.username);
     return;
   }
 
