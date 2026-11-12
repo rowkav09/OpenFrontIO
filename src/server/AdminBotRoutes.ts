@@ -261,6 +261,22 @@ export function registerAdminBotRoutes(opts: {
     return true;
   };
 
+  // Normal listings omit private lobbies and running games. Only the
+  // key-gated admin dashboard may enumerate them.
+  app.get("/api/adminbot/games", requireAdminBotKey, (_req, res) => {
+    res.json({
+      workerIndex: workerId,
+      games: gm.allGames().map((game) => ({
+        ...game.gameInfo(),
+        phase: game.phase(),
+        paused: game.isPaused(),
+        playerCount: game.numClients(),
+        workerIndex: workerId,
+        workerPath: ServerEnv.workerPath(game.id),
+      })),
+    });
+  });
+
   // Create a private game. The worker mints a self-owned id and returns it, so
   // the bot doesn't need to know the sharding. nginx (and the vite dev proxy)
   // randomly route here to spread new games across workers.

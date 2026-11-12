@@ -23,12 +23,12 @@ export async function verifyClientToken(
   token: string,
 ): Promise<TokenVerificationResult> {
   if (PersistentIdSchema.safeParse(token).success) {
-    if (ServerEnv.env() === GameEnv.Dev) {
+    if (ServerEnv.env() === GameEnv.Dev && !ServerEnv.selfHosted()) {
       return { type: "success", persistentId: token, claims: null };
     } else {
       return {
         type: "error",
-        message: "persistent ID not allowed in production",
+        message: "persistent ID not allowed in this deployment",
       };
     }
   }
@@ -71,11 +71,12 @@ export async function getUserMe(
 ): Promise<{ type: "success"; response: UserMeResponse } | UserMeError> {
   try {
     // Get the user object
-    const response = await fetch(ServerEnv.jwtIssuer() + "/users/@me", {
+    const response = await fetch(ServerEnv.accountApiBase() + "/users/@me", {
       headers: {
         authorization: `Bearer ${token}`,
         "x-api-key": ServerEnv.apiKey(),
       },
+      redirect: "error",
     });
     if (response.status !== 200) {
       return {

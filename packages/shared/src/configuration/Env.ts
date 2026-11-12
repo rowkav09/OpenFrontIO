@@ -26,6 +26,8 @@ declare global {
       numWorkers?: number;
       turnstileSiteKey?: string;
       jwtAudience?: string;
+      // A standalone installation serves its own account API at this origin.
+      selfHosted?: boolean;
       // Environment-scoped like turnstileSiteKey, but optional: a deployment
       // without one (dev, desktop shells) just keeps the inline Stripe flow
       // off.

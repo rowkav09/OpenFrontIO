@@ -324,9 +324,9 @@ export async function startWorker() {
   }
 
   const privilegeRefresher = new PrivilegeRefresher(
-    ServerEnv.jwtIssuer() + "/cosmetics.json",
+    ServerEnv.accountApiBase() + "/cosmetics.json",
     ServerEnv.apiKey(),
-    ServerEnv.jwtIssuer() + "/reserved_clan_tags",
+    ServerEnv.accountApiBase() + "/reserved_clan_tags",
     log,
   );
   void privilegeRefresher.start();

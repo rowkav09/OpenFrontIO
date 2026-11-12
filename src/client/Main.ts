@@ -90,6 +90,7 @@ import { GameStartingModal } from "./GameStartingModal";
 import { syncHashedEmail } from "./HashedEmail";
 import type { HelpModal } from "./HelpModal";
 import "./HomepagePromos";
+import "./RowanAdminPanel";
 import type { HomepagePromos } from "./HomepagePromos";
 import type { HostLobbyModal as HostPrivateLobbyModal } from "./HostLobbyModal";
 import { showInGameAlert, showInGameConfirm } from "./InGameModal";

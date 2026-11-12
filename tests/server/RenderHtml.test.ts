@@ -286,6 +286,12 @@ describe("RenderHtml environment-only render", () => {
     clearAppShellContentCache();
   });
 
+  it("marks a self-hosted page so clients use its local account API", async () => {
+    vi.stubEnv("SELF_HOSTED", "1");
+    const config = bootstrapConfig(await renderHtmlContent(REAL_TEMPLATE));
+    expect(config.selfHosted).toBe(true);
+  });
+
   // The point of the mode. This page is uploaded once per version and served
   // to every player on it, so naming one server in it would pin the whole
   // version to that server.
