@@ -605,7 +605,9 @@ export const UserMeResponseSchema = z.object({
     email: z.string().optional(),
     steam: SteamUserSchema.optional(),
     // A local self-host account has neither an external provider nor an email.
-    local: z.object({ username: z.string() }).optional(),
+    local: z
+      .object({ username: z.string(), isAdmin: z.boolean().optional() })
+      .optional(),
   }),
   // The caller's active account ban, shown to them (localized client-side), or
   // null. `category` is a server enum but kept as a string here so an

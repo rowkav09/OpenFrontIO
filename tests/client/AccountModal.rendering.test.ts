@@ -57,12 +57,15 @@ vi.stubGlobal("localStorage", {
 });
 
 import { AccountModal } from "../../src/client/AccountModal";
+import { getUserMe } from "../../src/client/Api";
 import {
   discordLogin,
   googleLogin,
   linkGoogle,
   linkSteam,
+  reauthAfterPortalChange,
 } from "../../src/client/Auth";
+import { ClientEnv } from "../../src/client/ClientEnv";
 
 function makeUserMe(
   overrides: Partial<UserMeResponse["user"]>,
@@ -152,6 +155,118 @@ describe("AccountModal — rendering", () => {
     // out moved to the nav profile menu, so no log-out control here.
     expect(modal.querySelector("currency-display")).toBeTruthy();
     expect(text).not.toContain("nav_account_menu.log_out");
+  });
+
+  it("signs in a local user and opens the normal account profile", async () => {
+    const selfHosted = vi.spyOn(ClientEnv, "selfHosted").mockReturnValue(true);
+    const originalFetch = globalThis.fetch;
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ jwt: "jwt", expiresIn: 3600 }), {
+          status: 200,
+        }),
+    );
+    globalThis.fetch = fetchMock;
+    try {
+      await setLoggedInUser(makeUserMe({}));
+      expect(modal.textContent).toContain("Create account");
+      expect(modal.textContent).not.toContain("main.login_discord");
+
+      const username =
+        modal.querySelector<HTMLInputElement>("#local-username")!;
+      username.value = "friend";
+      username.dispatchEvent(new Event("input", { bubbles: true }));
+      const password =
+        modal.querySelector<HTMLInputElement>("#local-password")!;
+      password.value = "some-secret-password";
+      password.dispatchEvent(new Event("input", { bubbles: true }));
+
+      vi.mocked(reauthAfterPortalChange).mockResolvedValueOnce({
+        jwt: "jwt",
+        claims: {},
+      } as never);
+      vi.mocked(getUserMe).mockResolvedValueOnce(
+        makeUserMe({ local: { username: "friend", isAdmin: false } }),
+      );
+      modal
+        .querySelector("form")!
+        .dispatchEvent(
+          new Event("submit", { bubbles: true, cancelable: true }),
+        );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await modal.updateComplete;
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/auth/login",
+        expect.objectContaining({
+          method: "POST",
+          credentials: "include",
+          body: JSON.stringify({
+            username: "friend",
+            password: "some-secret-password",
+          }),
+        }),
+      );
+      expect(modal.textContent).toContain("friend");
+      const tabs = (
+        modal as unknown as { modalConfig(): { tabs: { key: string }[] } }
+      )
+        .modalConfig()
+        .tabs.map(({ key }) => key);
+      expect(tabs).toContain("games");
+      expect(tabs).not.toContain("friends");
+    } finally {
+      globalThis.fetch = originalFetch;
+      selfHosted.mockRestore();
+    }
+  });
+
+  it("shows a local registration conflict without switching account", async () => {
+    const selfHosted = vi.spyOn(ClientEnv, "selfHosted").mockReturnValue(true);
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ error: "username_taken" }), {
+          status: 409,
+        }),
+    );
+    try {
+      await setLoggedInUser(makeUserMe({}));
+      modal.querySelectorAll<HTMLButtonElement>('[role="tab"]')[1].click();
+      await modal.updateComplete;
+      const username =
+        modal.querySelector<HTMLInputElement>("#local-username")!;
+      username.value = "friend";
+      username.dispatchEvent(new Event("input", { bubbles: true }));
+      const password =
+        modal.querySelector<HTMLInputElement>("#local-password")!;
+      password.value = "some-secret-password";
+      password.dispatchEvent(new Event("input", { bubbles: true }));
+      const confirm = modal.querySelector<HTMLInputElement>(
+        "#local-confirm-password",
+      )!;
+      confirm.value = "some-secret-password";
+      confirm.dispatchEvent(new Event("input", { bubbles: true }));
+
+      modal
+        .querySelector("form")!
+        .dispatchEvent(
+          new Event("submit", { bubbles: true, cancelable: true }),
+        );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await modal.updateComplete;
+
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        "/auth/register",
+        expect.any(Object),
+      );
+      expect(modal.querySelector('[role="alert"]')?.textContent).toContain(
+        "already taken",
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+      selfHosted.mockRestore();
+    }
   });
 
   // The complement of the test above, and it earns its keep twice over:

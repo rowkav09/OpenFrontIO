@@ -179,10 +179,25 @@ function parseCreateGameRequest(reqBody: unknown): ParsedCreateGame {
       }
     }
   }
-  // Private only: reject Public and Singleplayer. An omitted gameType defaults
-  // to Private in createGame, so it's allowed through.
-  if (config.gameType !== undefined && config.gameType !== GameType.Private) {
-    return fail(400, { error: "admin bot can only create private games" });
+  // This self-host's owner can create true public custom lobbies. Other
+  // deployments retain the admin bot's private-only contract.
+  if (
+    config.gameType !== undefined &&
+    config.gameType !== GameType.Private &&
+    !(ServerEnv.selfHosted() && config.gameType === GameType.Public)
+  ) {
+    return fail(400, { error: "unsupported admin game type" });
+  }
+  if (config.gameType === GameType.Public) {
+    if (listed || featured) {
+      return fail(400, { error: "public_game_cannot_use_private_listing" });
+    }
+    if ((config.allowedPublicIds?.length ?? 0) > 0) {
+      return fail(400, { error: "public_game_cannot_use_join_whitelist" });
+    }
+    if (config.hostCheats !== undefined) {
+      return fail(400, { error: "public_game_cannot_use_host_cheats" });
+    }
   }
 
   // Guard BEFORE minting a lobby, so an ineligible request doesn't leave an
@@ -274,7 +289,7 @@ export function registerAdminBotRoutes(opts: {
     });
   });
 
-  // Create a private game. The worker mints a self-owned id and returns it, so
+  // Create a custom game. The worker mints a self-owned id and returns it, so
   // the bot doesn't need to know the sharding. nginx (and the vite dev proxy)
   // randomly route here to spread new games across workers.
   app.post("/api/adminbot/create_game", requireAdminBotKey, (req, res) => {
@@ -294,7 +309,7 @@ export function registerAdminBotRoutes(opts: {
       config,
       undefined,
       undefined,
-      undefined,
+      config.gameType === GameType.Public ? "hosted" : undefined,
       teams,
     );
     if (game === null) {
@@ -331,6 +346,9 @@ export function registerAdminBotRoutes(opts: {
     const parsed = parseCreateGameRequest(req.body);
     if (!parsed.ok) return res.status(parsed.status).json(parsed.body);
     const request = parsed.value;
+    if (request.config.gameType === GameType.Public) {
+      return res.status(400).json({ error: "public_game_pool_unsupported" });
+    }
 
     // A team pin names publicIds for ONE lobby. Repeated across members it
     // would be inert everywhere the hash did not send those players.

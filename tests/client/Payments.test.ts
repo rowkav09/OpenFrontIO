@@ -17,8 +17,10 @@ import {
   finalizeSteamOrder,
   invalidateUserMe,
 } from "../../src/client/Api";
+import { ClientEnv } from "../../src/client/ClientEnv";
 import {
   classifyPurchaseReturn,
+  createInlinePaymentIntent,
   drainPendingSteamAuthorizations,
   paymentsProvider,
   purchaseOutcomeMessage,
@@ -185,6 +187,17 @@ describe("paymentsProvider", () => {
     installShell({ steam: false });
     expect(paymentsProvider()).toBe("stripe");
   });
+});
+
+it("does not create real-money checkout on a self-hosted server", async () => {
+  vi.spyOn(ClientEnv, "selfHosted").mockReturnValue(true);
+  expect(await startPurchase(PACK, { navigate })).toMatchObject({
+    outcome: "error",
+  });
+  expect(await createInlinePaymentIntent(PACK)).toMatchObject({
+    kind: "error",
+  });
+  expect(checkoutMock).not.toHaveBeenCalled();
 });
 
 describe("steamMicroTxn", () => {

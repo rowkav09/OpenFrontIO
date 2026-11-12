@@ -454,6 +454,27 @@ export class GameServer {
         return finish({ status: 200 });
       }
 
+      case "admin_live_config": {
+        // A prestart lobby has no turn wire context yet. Once started, the
+        // patch is carried in the same turn stream used by reconnects and
+        // replays, so every simulation applies it at the same point.
+        if (this.stage !== "started") {
+          return finish({ status: 409, error: "game not running" });
+        }
+        Object.assign(this.gameConfig, stamped.config);
+        this.addIntent(stamped);
+        if (this.paused) {
+          // Deliver the rule change even while the ordinary turn timer is
+          // suspended; the server remains paused afterward.
+          this.paused = false;
+          this.endTurn();
+          this.paused = true;
+        } else {
+          this.endTurn();
+        }
+        return finish({ status: 200 });
+      }
+
       case "toggle_game_start_timer": {
         if (this.startsAt) {
           this.startsAt = undefined;

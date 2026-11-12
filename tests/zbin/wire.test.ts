@@ -113,6 +113,11 @@ const SAMPLE_INTENTS: StampedIntent[] = [
     clientID: P1,
     config: { bots: 5, instantBuild: true },
   },
+  {
+    type: "admin_live_config",
+    clientID: ADMIN_BOT_CLIENT_ID,
+    config: { instantBuild: true, goldMultiplier: 2 },
+  },
   { type: "toggle_game_start_timer", clientID: P1 },
 ];
 

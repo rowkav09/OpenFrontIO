@@ -6,6 +6,7 @@ import {
   type PaymentsCheckoutRequest,
   type PaymentsCheckoutResult,
 } from "./Api";
+import { ClientEnv } from "./ClientEnv";
 import { showToast, translateText } from "./Utils";
 
 export type { PaymentsProvider };
@@ -437,6 +438,9 @@ export async function startPurchase(
   request: PurchaseRequest,
   options: StartPurchaseOptions = {},
 ): Promise<PurchaseOutcome> {
+  if (ClientEnv.selfHosted()) {
+    return error("Real-money purchases are unavailable on this server.");
+  }
   const navigate = options.navigate ?? defaultNavigate;
   const provider = paymentsProvider();
 
@@ -598,6 +602,12 @@ export type InlineIntentResult =
 export async function createInlinePaymentIntent(
   request: PurchaseRequest,
 ): Promise<InlineIntentResult> {
+  if (ClientEnv.selfHosted()) {
+    return {
+      kind: "error",
+      error: error("Real-money purchases are unavailable on this server."),
+    };
+  }
   const result = await createPaymentsCheckout({
     provider: "stripe",
     handoffs: ["redirect", "client_secret"],

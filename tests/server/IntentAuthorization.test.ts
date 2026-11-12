@@ -40,14 +40,22 @@ const config = (c: Partial<GameConfig>): Intent => ({
 });
 const timer: Intent = { type: "toggle_game_start_timer" };
 const pause: Intent = { type: "toggle_pause", paused: true };
+const live: Intent = {
+  type: "admin_live_config",
+  config: { instantBuild: true },
+};
 const spawn: Intent = { type: "spawn", tile: 1 };
 
 describe("authorizeIntent", () => {
   it.each<[string, Intent, IntentActor, IntentGameState, number | null]>([
-    // The admin bot is refused any intent on a public game, before anything
-    // else is considered.
-    ["bot on a public game", spawn, bot, lobby({ isPublic: true }), 403],
-    ["bot kick on a public game", kick, bot, lobby({ isPublic: true }), 403],
+    [
+      "bot gameplay on a public game",
+      spawn,
+      bot,
+      lobby({ isPublic: true }),
+      400,
+    ],
+    ["bot kick on a public game", kick, bot, lobby({ isPublic: true }), null],
 
     [
       "mark_disconnected from anyone",
@@ -98,6 +106,13 @@ describe("authorizeIntent", () => {
     ],
     ["config by the host", config({ bots: 1 }), host, lobby(), null],
     ["config by the bot", config({ bots: 1 }), bot, lobby(), null],
+    [
+      "config public game by the bot",
+      config({ bots: 1 }),
+      bot,
+      lobby({ isPublic: true }),
+      null,
+    ],
     [
       "config on a public game",
       config({ bots: 1 }),
@@ -152,6 +167,13 @@ describe("authorizeIntent", () => {
     ["start timer by the host", timer, host, lobby(), null],
     ["start timer by the bot", timer, bot, lobby(), null],
     [
+      "start public game by the bot",
+      timer,
+      bot,
+      lobby({ isPublic: true }),
+      null,
+    ],
+    [
       "start timer by the host in a queued lobby",
       timer,
       host,
@@ -197,6 +219,22 @@ describe("authorizeIntent", () => {
       null,
     ],
     ["pause before the start", pause, host, lobby(), 409],
+    ["live rules by player", live, player, lobby({ hasStarted: true }), 403],
+    [
+      "live rules by admin player",
+      live,
+      admin,
+      lobby({ hasStarted: true }),
+      403,
+    ],
+    ["live rules before start", live, bot, lobby(), 409],
+    [
+      "live rules by bot in public game",
+      live,
+      bot,
+      lobby({ isPublic: true, hasStarted: true }),
+      null,
+    ],
 
     ["gameplay by a player", spawn, player, lobby(), null],
     [

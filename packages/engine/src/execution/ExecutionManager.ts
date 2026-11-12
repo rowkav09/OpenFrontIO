@@ -1,4 +1,5 @@
 import {
+  ADMIN_BOT_CLIENT_ID,
   ClientID,
   GameID,
   StampedIntent,
@@ -58,6 +59,12 @@ export class Executor {
   }
 
   createExec(intent: StampedIntent): Execution {
+    if (intent.type === "admin_live_config") {
+      if (intent.clientID === ADMIN_BOT_CLIENT_ID) {
+        this.mg.config().applyLiveGameConfigPatch(intent.config);
+      }
+      return new NoOpExecution();
+    }
     const player = this.mg.playerByClientID(intent.clientID);
     if (!player) {
       console.warn(`player with clientID ${intent.clientID} not found`);

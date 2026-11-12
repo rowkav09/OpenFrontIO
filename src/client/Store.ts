@@ -11,6 +11,7 @@ import {
 import type { PropertyValues, TemplateResult } from "lit";
 import { html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
+import { ClientEnv } from "./ClientEnv";
 import { BaseModal } from "./components/BaseModal";
 import "./components/CosmeticCard";
 import { cosmeticSelectionLabel } from "./components/CosmeticPresentation";
@@ -166,14 +167,23 @@ export class StoreModal extends BaseModal {
     }
     return {
       showScrollToTop: true,
-      tabs: [
-        { key: "packs", label: translateText("store.packs") },
-        { key: "subscriptions", label: translateText("store.subscriptions") },
-        { key: "bundles", label: translateText("store.bundles") },
-        { key: "cosmetics", label: translateText("store.cosmetics") },
-        { key: "effects", label: translateText("store.effects") },
-        { key: "tribes", label: translateText("store.tribes") },
-      ],
+      tabs: ClientEnv.selfHosted()
+        ? [
+            { key: "cosmetics", label: translateText("store.cosmetics") },
+            { key: "bundles", label: translateText("store.bundles") },
+            { key: "effects", label: translateText("store.effects") },
+          ]
+        : [
+            { key: "packs", label: translateText("store.packs") },
+            {
+              key: "subscriptions",
+              label: translateText("store.subscriptions"),
+            },
+            { key: "bundles", label: translateText("store.bundles") },
+            { key: "cosmetics", label: translateText("store.cosmetics") },
+            { key: "effects", label: translateText("store.effects") },
+            { key: "tribes", label: translateText("store.tribes") },
+          ],
     };
   }
 
@@ -538,13 +548,17 @@ export class StoreModal extends BaseModal {
     // cosmetics.json may still carry one — never render a dollar button).
     const product =
       isPurchasable &&
+      !ClientEnv.selfHosted() &&
       (resolved.type === "pack" || resolved.type === "subscription")
         ? (priced?.product ?? null)
         : null;
     // A tier with no Stripe listing (sold only on Steam) has no `product`;
     // its price is the tier's own, in cents.
     const subscriptionDollarPrice =
-      isPurchasable && resolved.type === "subscription" && product === null
+      isPurchasable &&
+      !ClientEnv.selfHosted() &&
+      resolved.type === "subscription" &&
+      product === null
         ? formatUsdCents((resolved.cosmetic as Subscription).priceMonthly)
         : "";
     // The price as the server charges it now: once the item's own sale has
