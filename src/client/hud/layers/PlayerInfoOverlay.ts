@@ -13,6 +13,7 @@ import { EventBus } from "@openfront/shared/EventBus";
 import { html, LitElement, TemplateResult } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { Controller } from "../../Controller";
+import { ClientEnv } from "../../ClientEnv";
 import {
   ContextMenuEvent,
   DoBoatAttackEvent,
@@ -126,6 +127,101 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
   private immunityBarVisible = false;
 
   private _isActive = false;
+  @state() private adminCsrfToken: string | null = null;
+  @state() private adminTargetId = "";
+  @state() private adminBusy = false;
+  @state() private adminMessage = "";
+  @state() private nationAttackMeOrders: Record<string, string> = {};
+
+  setRole(role: string | null): void {
+    this.adminCsrfToken = null;
+    if (!ClientEnv.selfHosted() || (role !== "root" && role !== "admin")) return;
+    void this.loadNationAdmin();
+  }
+
+  private async loadNationAdmin(): Promise<void> {
+    try {
+      const session = await fetch("/rowan-admin/session", { credentials: "same-origin" });
+      if (!session.ok) return;
+      const data = await session.json();
+      if (data.authenticated !== true || typeof data.csrfToken !== "string") return;
+      this.adminCsrfToken = data.csrfToken;
+      const roster = await fetch(
+        `/rowan-admin/game/${encodeURIComponent(this.game.gameID())}/roster`,
+        { credentials: "same-origin" },
+      );
+      if (roster.ok) {
+        const state = await roster.json();
+        this.nationAttackMeOrders = state.nationAttackMeOrders ?? {};
+      }
+    } catch {
+      this.adminCsrfToken = null;
+    }
+  }
+
+  private async nationCommand(
+    nation: PlayerView,
+    action: "attack" | "attack_me",
+    targetId: string,
+    enabled?: boolean,
+  ): Promise<void> {
+    if (!this.adminCsrfToken || this.adminBusy || !targetId) return;
+    this.adminBusy = true;
+    this.adminMessage = "";
+    try {
+      const response = await fetch(
+        `/rowan-admin/game/${encodeURIComponent(this.game.gameID())}/intent`,
+        {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json", "X-CSRF-Token": this.adminCsrfToken },
+          body: JSON.stringify({
+            type: "admin_nation_control", action, nationId: nation.id(), targetId,
+            ...(action === "attack_me" ? { enabled } : {}),
+          }),
+        },
+      );
+      if (!response.ok) throw new Error("Command rejected");
+      if (action === "attack_me") {
+        const next = { ...this.nationAttackMeOrders };
+        if (enabled) next[nation.id()] = targetId;
+        else delete next[nation.id()];
+        this.nationAttackMeOrders = next;
+      }
+      this.adminMessage = action === "attack"
+        ? "Attack ordered if borders touch."
+        : enabled ? "Nation will target you when adjacent." : "Nation targeting cleared.";
+    } catch {
+      this.adminMessage = "Could not send nation command.";
+    } finally {
+      this.adminBusy = false;
+    }
+  }
+
+  private renderNationAdmin(nation: PlayerView, myPlayer: PlayerView | null | undefined) {
+    if (!this.adminCsrfToken || !myPlayer) return "";
+    const targets = this.game.players().filter((p) => p !== nation && p.isAlive());
+    const attackMe = this.nationAttackMeOrders[nation.id()] === myPlayer.id();
+    return html`<div class="flex items-center gap-2 text-xs p-2 border-t border-white/20"
+      @click=${(event: Event) => event.stopPropagation()}>
+      <strong>Nation admin</strong>
+      <select aria-label="Attack target" class="bg-gray-900 border border-white/30 rounded p-1"
+        .value=${this.adminTargetId}
+        @change=${(event: Event) => (this.adminTargetId = (event.target as HTMLSelectElement).value)}>
+        <option value="">Choose target</option>
+        ${targets.map((target) => html`<option value=${target.id()}>${target.displayName()}</option>`)}
+      </select>
+      <button ?disabled=${this.adminBusy || !this.adminTargetId}
+        @click=${() => void this.nationCommand(nation, "attack", this.adminTargetId)}>
+        Attack if touching
+      </button>
+      <button ?disabled=${this.adminBusy}
+        @click=${() => void this.nationCommand(nation, "attack_me", myPlayer.id(), !attackMe)}>
+        ${attackMe ? "Stop attacking me" : "Attack me automatically"}
+      </button>
+      <span role="status">${this.adminMessage}</span>
+    </div>`;
+  }
 
   private userSettings = new UserSettings();
 
@@ -756,6 +852,7 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
             ? this.renderActionButtons(player, myPlayer, keybinds)
             : ""
         }
+        ${player.type() === PlayerType.Nation ? this.renderNationAdmin(player, myPlayer) : ""}
       </div>
     `;
   }

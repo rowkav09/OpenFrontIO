@@ -270,6 +270,37 @@ describe("GameServer.handleIntent (admin bot)", () => {
     });
   });
 
+  describe("admin_nation_control", () => {
+    it("delivers owner-only nation orders and exposes active targeting only to admin API", () => {
+      const game = makeGame({ config: { gameType: GameType.Public } });
+      const player = makeClient({ clientID: cid("p1") });
+      game.joinClient(player);
+      startGame(game);
+      const result = apply(game, {
+        type: "admin_nation_control",
+        action: "attack_me",
+        nationId: "nation-1",
+        targetId: "player-1",
+        enabled: true,
+      });
+      expect(result.status).toBe(200);
+      expect(game.nationAttackMeOrders()).toEqual({ "nation-1": "player-1" });
+      expect(JSON.stringify(game.gameInfo())).not.toContain("nationAttackMeOrders");
+      const ctx = createGameWireContext([{ clientID: cid("p1") }]);
+      const intents = mockWsOf(player)
+        .sent(ctx)
+        .flatMap((m) => (m.type === "turn" ? m.turn.intents : []));
+      expect(intents).toContainEqual({
+        type: "admin_nation_control",
+        clientID: ADMIN_BOT_CLIENT_ID,
+        action: "attack_me",
+        nationId: "nation-1",
+        targetId: "player-1",
+        enabled: true,
+      });
+    });
+  });
+
   describe("rejected intents", () => {
     it("rejects a gameplay intent with 400", () => {
       const game = makeGame();

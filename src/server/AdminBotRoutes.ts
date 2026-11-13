@@ -426,6 +426,7 @@ export function registerAdminBotRoutes(opts: {
       gameID: id,
       players: game.roster(),
       playerRegenBonuses: game.playerRegenBonusPercents(),
+      nationAttackMeOrders: game.nationAttackMeOrders(),
     });
   });
 

@@ -74,6 +74,17 @@ export class Executor {
       }
       return new NoOpExecution();
     }
+    if (intent.type === "admin_nation_control") {
+      if (intent.clientID === ADMIN_BOT_CLIENT_ID) {
+        const nation = this.mg.executions().find(
+          (exec): exec is NationExecution =>
+            exec instanceof NationExecution && exec.playerID() === intent.nationId,
+        );
+        if (intent.action === "attack") nation?.commandAttack(intent.targetId);
+        else nation?.setAttackMeTarget(intent.enabled === true ? intent.targetId : null);
+      }
+      return new NoOpExecution();
+    }
     const player = this.mg.playerByClientID(intent.clientID);
     if (!player) {
       console.warn(`player with clientID ${intent.clientID} not found`);
