@@ -207,6 +207,7 @@ export class RowanAdminPanel extends LitElement {
   @state() private profiles: LocalProfile[] = [];
   @state() private selectedProfile: LocalProfile | null = null;
   @state() private profilesLoading = false;
+  @state() private globalRewardDraft = { xp: 1, soft: 1, hard: 1 };
   @state() private entitlementDraft = {
     xpMultiplier: 1,
     softRewardMultiplier: 1,
@@ -661,7 +662,7 @@ export class RowanAdminPanel extends LitElement {
     if (!(await this.checkSession())) return;
     this.open = true;
     if (this.tab === "profiles") {
-      await Promise.all([this.loadProfiles(), this.loadCatalog()]);
+      await Promise.all([this.loadProfiles(), this.loadCatalog(), this.loadGlobalRewards()]);
     } else {
       await this.loadGames();
     }
@@ -711,6 +712,24 @@ export class RowanAdminPanel extends LitElement {
     } finally {
       this.profilesLoading = false;
     }
+  }
+
+  private async loadGlobalRewards() {
+    try {
+      const result = await this.request<{ multipliers: { xp: number; soft: number; hard: number } }>("/reward-multipliers");
+      this.globalRewardDraft = result.multipliers;
+    } catch (error) {
+      this.error = error instanceof Error ? error.message : "Could not load global rewards";
+    }
+  }
+
+  private saveGlobalRewards() {
+    return this.act(async () => {
+      const result = await this.request<{ multipliers: { xp: number; soft: number; hard: number } }>(
+        "/reward-multipliers", { method: "PATCH", body: JSON.stringify(this.globalRewardDraft) },
+      );
+      this.globalRewardDraft = result.multipliers;
+    }, "Global reward multipliers saved.");
   }
 
   private async loadCatalog() {
@@ -1237,6 +1256,22 @@ export class RowanAdminPanel extends LitElement {
     );
     return html`<div class="cols">
       <div>
+        <div class="card">
+          <h3>Global match rewards</h3>
+          <p>These multipliers apply to every account's match rewards, alongside each account's own settings.</p>
+          ${(["xp", "soft", "hard"] as const).map((key) => html`
+            <div class="row"><label>${key === "xp" ? "XP" : key === "soft" ? "Soft currency" : "Hard currency"} multiplier</label>
+              <input type="number" min="0" max="10" step="0.1"
+                .value=${String(this.globalRewardDraft[key])}
+                @input=${(event: Event) => {
+                  const raw = (event.target as HTMLInputElement).value;
+                  if (raw !== "") this.globalRewardDraft = {
+                    ...this.globalRewardDraft, [key]: numberValue(raw, 1, 0, 10),
+                  };
+                }} />
+            </div>`)}
+          <button class="primary" ?disabled=${this.busy} @click=${this.saveGlobalRewards}>Save global multipliers</button>
+        </div>
         <div class="card">
           <h3>Local accounts</h3>
           <form
