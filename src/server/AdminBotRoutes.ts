@@ -422,7 +422,11 @@ export function registerAdminBotRoutes(opts: {
     if (game === null) {
       return res.status(404).json({ error: "Game not found" });
     }
-    res.json({ gameID: id, players: game.roster() });
+    res.json({
+      gameID: id,
+      players: game.roster(),
+      playerRegenBonuses: game.playerRegenBonusPercents(),
+    });
   });
 
   // Read what's happening in a running game. The sim runs on the clients, so

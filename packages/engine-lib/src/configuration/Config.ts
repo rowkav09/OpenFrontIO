@@ -1,6 +1,7 @@
 import {
   Difficulty,
   GameType,
+  PlayerID,
   PlayerType,
   Tick,
   UnitInfo,
@@ -86,6 +87,7 @@ const OVERTIME_DEFAULTS = {
 
 export class Config {
   private unitInfoCache = new Map<UnitType, UnitInfo>();
+  private playerTroopRegenBonuses = new Map<PlayerID, number>();
   constructor(
     protected _gameConfig: GameConfig,
     private _isReplay: boolean,
@@ -164,6 +166,12 @@ export class Config {
     Object.assign(this._gameConfig, patch);
     // Unit construction durations depend on instantBuild and are cached.
     if (patch.instantBuild !== undefined) this.unitInfoCache.clear();
+  }
+
+  /** Applied by an owner-only intent in the deterministic turn stream. */
+  setPlayerTroopRegenBonus(playerId: PlayerID, bonusPercent: number): void {
+    if (bonusPercent === 0) this.playerTroopRegenBonuses.delete(playerId);
+    else this.playerTroopRegenBonuses.set(playerId, bonusPercent);
   }
 
   cityTroopIncrease(): number {
@@ -421,6 +429,7 @@ export class Config {
     }
 
     toAdd *= this._gameConfig.troopRegenMultiplier ?? 1;
+    toAdd *= 1 + (this.playerTroopRegenBonuses.get(player.id()) ?? 0) / 100;
     return Math.min(player.troops() + toAdd, max) - player.troops();
   }
 

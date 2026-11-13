@@ -65,6 +65,15 @@ export class Executor {
       }
       return new NoOpExecution();
     }
+    if (intent.type === "admin_player_regen") {
+      if (intent.clientID === ADMIN_BOT_CLIENT_ID) {
+        const target = this.mg.playerByClientID(intent.targetClientID);
+        if (target) {
+          this.mg.config().setPlayerTroopRegenBonus(target.id(), intent.bonusPercent);
+        }
+      }
+      return new NoOpExecution();
+    }
     const player = this.mg.playerByClientID(intent.clientID);
     if (!player) {
       console.warn(`player with clientID ${intent.clientID} not found`);
