@@ -559,6 +559,7 @@ export class RowanAdminPanel extends LitElement {
     );
     document.addEventListener("game-starting", this.onGameStarting);
     document.addEventListener("leave-lobby", this.onLeaveLobby);
+    document.addEventListener("menu-restored", this.onLeaveLobby);
     this.selectedId = this.gameIdFromLocation() ?? "";
     const requestedOpen =
       new URL(window.location.href).searchParams.has("rowan-admin") ||
@@ -585,6 +586,7 @@ export class RowanAdminPanel extends LitElement {
     );
     document.removeEventListener("game-starting", this.onGameStarting);
     document.removeEventListener("leave-lobby", this.onLeaveLobby);
+    document.removeEventListener("menu-restored", this.onLeaveLobby);
     window.clearInterval(this.refreshTimer);
     super.disconnectedCallback();
   }
