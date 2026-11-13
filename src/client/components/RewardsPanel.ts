@@ -36,6 +36,20 @@ export class RewardsPanel extends LitElement {
   signedIn = false;
 
   @state() private claiming = false;
+  @state() private claimedMessage = "";
+
+  private async celebrate(rewards: Reward[]): Promise<void> {
+    const soft = rewards.filter((r) => r.currencyType === "soft")
+      .reduce((sum, r) => sum + BigInt(r.amount), 0n);
+    const hard = rewards.filter((r) => r.currencyType === "hard")
+      .reduce((sum, r) => sum + BigInt(r.amount), 0n);
+    this.claimedMessage = [
+      soft > 0n ? `+${soft.toLocaleString()} Caps` : "",
+      hard > 0n ? `+${hard.toLocaleString()} Plutonium` : "",
+    ].filter(Boolean).join(" · ");
+    await new Promise((resolve) => setTimeout(resolve, 1400));
+    this.claimedMessage = "";
+  }
 
   createRenderRoot() {
     return this;
@@ -93,6 +107,7 @@ export class RewardsPanel extends LitElement {
         });
         return;
       }
+      await this.celebrate([reward]);
       this.emitChanged({
         currency: result.currency,
         rewards: this.rewards.filter((r) => r.id !== reward.id),
@@ -112,6 +127,8 @@ export class RewardsPanel extends LitElement {
         return;
       }
       invalidateUserMe();
+      const claimedIds = new Set(result.claimed.map((entry) => entry.id));
+      await this.celebrate(this.rewards.filter((reward) => claimedIds.has(reward.id)));
       // Held rewards stay pending: keep showing them, with why.
       this.emitChanged({ currency: result.currency, rewards: result.held });
     } finally {
@@ -233,6 +250,10 @@ export class RewardsPanel extends LitElement {
     const claimable = this.rewards.filter(isRewardClaimable);
     return html`
       <div class="bg-white/5 rounded-xl border border-white/10 p-6">
+        ${this.claimedMessage ? html`<div role="status" class="mb-4 rounded-xl border border-amber-400/50 bg-amber-500/20 p-4 text-center text-amber-200 animate-pulse">
+          <span class="text-2xl" aria-hidden="true">✨</span>
+          <span class="ml-2 font-bold">${this.claimedMessage} claimed!</span>
+        </div>` : ""}
         <div class="flex items-center justify-between gap-4 mb-4">
           <h3 class="text-lg font-bold text-white flex items-center gap-2">
             <span>🎁</span>

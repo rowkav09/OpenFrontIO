@@ -208,14 +208,10 @@ export class AccountModal extends BaseModal {
 
   private hasAnyStats(): boolean {
     if (!this.statsTree) return false;
-    // Check if statsTree has any data
-    return (
-      Object.keys(this.statsTree).length > 0 &&
-      Object.values(this.statsTree).some(
-        (gameTypeStats) =>
-          gameTypeStats && Object.keys(gameTypeStats).length > 0,
-      )
-    );
+    return (this.statsTree.recent?.all.games ?? 0) > 0 ||
+      ["Singleplayer", "Public", "Private", "Ranked"].some((key) =>
+        Object.keys(this.statsTree?.[key as keyof PlayerStatsTree] ?? {}).length > 0
+      );
   }
 
   protected renderHeaderSlot() {
@@ -539,7 +535,9 @@ export class AccountModal extends BaseModal {
           ? html`<player-stats-tree-view
               .statsTree=${this.statsTree}
             ></player-stats-tree-view>`
-          : this.renderEmptyState("📊", translateText("account_modal.no_stats"))
+          : this.renderEmptyState("📊", ClientEnv.selfHosted()
+              ? "Stats appear after a match you spawn in finishes."
+              : translateText("account_modal.no_stats"))
       }
     `;
   }
@@ -651,7 +649,6 @@ export class AccountModal extends BaseModal {
     event: CustomEvent<RewardsChangedDetail>,
   ): void => {
     this.handleRewardsChanged(event);
-    void this.refreshUserMe().then(() => this.requestUpdate());
   };
 
   private renderEmptyState(icon: string, message: string): TemplateResult {
@@ -700,6 +697,7 @@ export class AccountModal extends BaseModal {
       this.userMeResponse.player.currency = event.detail.currency;
     }
     this.requestUpdate();
+    void this.refreshUserMe().then(() => this.requestUpdate());
   };
 
   // The panel already re-fetched /users/@me itself (its mutating calls
