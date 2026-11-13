@@ -837,7 +837,7 @@ class Client {
       const isAdFree =
         userMeResponse !== false && userMeResponse.player?.adfree === true;
       window.adsEnabled =
-        !isAdFree && !gamePortal.isOnGamePortal() && !isDesktopShell();
+        !ClientEnv.selfHosted() && !isAdFree && !gamePortal.isOnGamePortal() && !isDesktopShell();
       syncHashedEmail(userMeResponse, window.adsEnabled).catch((e) =>
         console.warn("Hashed email sync failed", e),
       );

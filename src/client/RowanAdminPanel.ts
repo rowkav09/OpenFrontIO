@@ -594,7 +594,7 @@ export class RowanAdminPanel extends LitElement {
   private onKeyDown = (event: KeyboardEvent) => {
     if (
       !this.session.authenticated ||
-      event.code !== "F8" ||
+      event.code !== "Slash" ||
       event.repeat ||
       isEditableTarget(event)
     )
@@ -2262,9 +2262,9 @@ ${JSON.stringify(this.liveStats, null, 2)}</pre>`
           ? html`<button
               class="launcher"
               @click=${() => void this.opened()}
-              title="Show admin panel (F8)"
+              title="Show admin panel (/)"
             >
-              Admin · F8
+              Admin · /
             </button>`
           : nothing
       }
