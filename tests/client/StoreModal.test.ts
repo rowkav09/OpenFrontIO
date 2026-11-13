@@ -369,7 +369,7 @@ describe("StoreModal cosmetic browser", () => {
       )
         .modalConfig()
         .tabs.map(({ key }) => key);
-      expect(tabs).toEqual(["cosmetics", "bundles", "effects"]);
+      expect(tabs).toEqual(["cosmetics", "bundles", "effects", "tribes"]);
       expect(purchaseButton(modal, red.key).onPurchaseHard).toBeDefined();
       expect(purchaseButton(modal, red.key).onPurchaseDollar).toBeUndefined();
     } finally {

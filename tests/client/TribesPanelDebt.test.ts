@@ -50,6 +50,7 @@ vi.mock("../../src/client/Utils", async (importOriginal) => ({
 }));
 
 import type { UserMeResponse } from "@openfront/shared/ApiSchemas";
+import { ClientEnv } from "../../src/client/ClientEnv";
 import "../../src/client/components/TribesPanel";
 import type { TribesPanel } from "../../src/client/components/TribesPanel";
 
@@ -76,9 +77,9 @@ const tribe = {
   boostExpiresAt: null,
 };
 
-async function mount(): Promise<TribesPanel> {
+async function mount(account: UserMeResponse = userMe): Promise<TribesPanel> {
   const el = document.createElement("tribes-panel") as TribesPanel;
-  el.userMeResponse = userMe;
+  el.userMeResponse = account;
   document.body.appendChild(el);
   await el.updateComplete;
   // updated() kicks off the list + cosmetics fetch; let both settle and the
@@ -131,6 +132,50 @@ describe("TribesPanel when the wallet is in debt", () => {
 
   afterEach(() => {
     document.body.innerHTML = "";
+  });
+
+  it("prompts a self-host guest to sign in before loading tribe names", async () => {
+    const selfHosted = vi.spyOn(ClientEnv, "selfHosted").mockReturnValue(true);
+    try {
+      const el = await mount(userWithHard(0));
+      expect(el.textContent).toContain("store.tribes_login_required");
+      expect(getMyTribeNames).not.toHaveBeenCalled();
+    } finally {
+      selfHosted.mockRestore();
+    }
+  });
+
+  it("shows a self-host shortfall without a cash top-up action", async () => {
+    const selfHosted = vi.spyOn(ClientEnv, "selfHosted").mockReturnValue(true);
+    const localAccount = {
+      ...userMe,
+      user: { local: { username: "friend", isAdmin: false } },
+    } as UserMeResponse;
+    try {
+      purchaseTribeName.mockResolvedValue({
+        ok: false,
+        code: "insufficient_balance",
+      });
+      getUserMe.mockResolvedValue({
+        ...localAccount,
+        player: {
+          ...localAccount.player,
+          currency: { hard: 20, soft: 0 },
+        },
+      });
+      const el = await mount(localAccount);
+      await buy(el, "Ninja");
+      expect(dialog(el).info).toMatchObject({
+        shortfall: PRICE_HARD - 20,
+        canTopUp: false,
+      });
+      expect(
+        el.querySelector<HTMLElement & { buttons: string }>("confirm-dialog")
+          ?.buttons,
+      ).toBe("none");
+    } finally {
+      selfHosted.mockRestore();
+    }
   });
 
   describe("buying a name", () => {

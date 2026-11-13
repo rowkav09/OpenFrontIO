@@ -1,6 +1,7 @@
 import { assetUrl } from "@openfront/shared/AssetUrls";
 import { LitElement, html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
+import { ClientEnv } from "../ClientEnv";
 import {
   composeVersionDisplay,
   desktopVersion,
@@ -34,6 +35,16 @@ export class Footer extends LitElement {
   }
 
   render() {
+    if (ClientEnv.selfHosted()) {
+      return html`<footer class="[.in-game_&]:hidden bg-zinc-900/90 border-t border-white/10 px-4 py-2 text-white/50 text-xs flex items-center justify-between">
+        <span>RowanFront</span>
+        <div class="flex items-center gap-4">
+          <a href="/terms-of-service.html" target="_blank">Terms</a>
+          <a href="/privacy-policy.html" target="_blank">Privacy</a>
+          <lang-selector></lang-selector>
+        </div>
+      </footer>`;
+    }
     // Scaled to 3/4 on compact screens (styles.css), like the nav bar, from sm
     // up so phones keep their full-size footer.
     return html`

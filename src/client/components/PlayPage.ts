@@ -1,6 +1,7 @@
 import { assetUrl } from "@openfront/shared/AssetUrls";
-import { LitElement, html } from "lit";
+import { LitElement, html, nothing } from "lit";
 import { customElement } from "lit/decorators.js";
+import { ClientEnv } from "../ClientEnv";
 import "./CosmeticBackground";
 import "./NavAccountMenu";
 import "./NavUtilityIcons";
@@ -59,8 +60,8 @@ export class PlayPage extends LitElement {
               class="col-start-2 flex items-center justify-center text-malibu-blue min-w-0"
             >
               <img
-                src=${assetUrl("images/OpenFrontLogo.svg")}
-                alt="OpenFront"
+                src=${assetUrl("images/RowanFrontLogo.png")}
+                alt="RowanFront"
                 class="h-full w-auto"
               />
             </div>
@@ -91,7 +92,7 @@ export class PlayPage extends LitElement {
           <!-- Left column: news banner + identity row, stacked tight. -->
           <div class="flex flex-col gap-2 min-w-0">
             <!-- Off on compact screens (see styles.css), like Streaming Now. -->
-            <news-box class="compact:hidden"></news-box>
+            ${ClientEnv.selfHosted() ? nothing : html`<news-box class="compact:hidden"></news-box>`}
 
             <!-- Identity row: username over the currently selected cosmetic background. -->
             <div
@@ -113,18 +114,18 @@ export class PlayPage extends LitElement {
 
           <!-- Right column: Streaming Now (desktop only), stretched to the left column's
                full height so the top strip has no dead space. -->
-          <streaming-now
+          ${ClientEnv.selfHosted() ? nothing : html`<streaming-now
             class="hidden lg:flex lg:h-full lg:flex-col w-full min-w-0"
-          ></streaming-now>
+          ></streaming-now>`}
         </div>
 
         <game-mode-selector></game-mode-selector>
 
         <!-- Desktop gets the compact footer button instead. -->
-        <steam-wishlist
+        ${ClientEnv.selfHosted() ? nothing : html`<steam-wishlist
           campaign="home_mobile"
           class="block px-2 pb-4 lg:hidden"
-        ></steam-wishlist>
+        ></steam-wishlist>`}
       </div>
     `;
   }

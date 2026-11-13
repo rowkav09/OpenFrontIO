@@ -48,6 +48,8 @@ type LocalProfile = {
   totalXp: number;
   level: number;
   xpMultiplier: number;
+  softRewardMultiplier: number;
+  hardRewardMultiplier: number;
   premium: boolean;
   allCosmetics: boolean;
   ownedCosmetics: string[];
@@ -76,6 +78,7 @@ type ConfigDraft = {
   maxTimerValue: number | null;
   winThresholdTenths: number | null;
   goldMultiplier: number | null;
+  troopRegenMultiplier: number | null;
   startingGold: number | null;
   customAllianceDuration: number | null;
   infiniteGold: boolean;
@@ -103,6 +106,7 @@ type LiveDraft = Pick<
   | "instantBuild"
   | "disableAlliances"
   | "goldMultiplier"
+  | "troopRegenMultiplier"
   | "maxTimerValue"
   | "winThresholdTenths"
   | "disabledUnits"
@@ -122,6 +126,7 @@ const DEFAULT_LIVE_DRAFT: LiveDraft = {
   disableAlliances: false,
   waterNukes: false,
   goldMultiplier: null,
+  troopRegenMultiplier: null,
   maxTimerValue: null,
   winThresholdTenths: null,
   overtimeEnabled: false,
@@ -142,6 +147,7 @@ const DEFAULT_DRAFT: ConfigDraft = {
   maxTimerValue: null,
   winThresholdTenths: null,
   goldMultiplier: null,
+  troopRegenMultiplier: null,
   startingGold: null,
   customAllianceDuration: null,
   infiniteGold: false,
@@ -201,8 +207,11 @@ export class RowanAdminPanel extends LitElement {
   @state() private profiles: LocalProfile[] = [];
   @state() private selectedProfile: LocalProfile | null = null;
   @state() private profilesLoading = false;
+  @state() private globalRewardDraft = { xp: 1, soft: 1, hard: 1 };
   @state() private entitlementDraft = {
     xpMultiplier: 1,
+    softRewardMultiplier: 1,
+    hardRewardMultiplier: 1,
     premium: false,
     allCosmetics: false,
     canCreatePublicLobbies: false,
@@ -653,7 +662,7 @@ export class RowanAdminPanel extends LitElement {
     if (!(await this.checkSession())) return;
     this.open = true;
     if (this.tab === "profiles") {
-      await Promise.all([this.loadProfiles(), this.loadCatalog()]);
+      await Promise.all([this.loadProfiles(), this.loadCatalog(), this.loadGlobalRewards()]);
     } else {
       await this.loadGames();
     }
@@ -705,6 +714,24 @@ export class RowanAdminPanel extends LitElement {
     }
   }
 
+  private async loadGlobalRewards() {
+    try {
+      const result = await this.request<{ multipliers: { xp: number; soft: number; hard: number } }>("/reward-multipliers");
+      this.globalRewardDraft = result.multipliers;
+    } catch (error) {
+      this.error = error instanceof Error ? error.message : "Could not load global rewards";
+    }
+  }
+
+  private saveGlobalRewards() {
+    return this.act(async () => {
+      const result = await this.request<{ multipliers: { xp: number; soft: number; hard: number } }>(
+        "/reward-multipliers", { method: "PATCH", body: JSON.stringify(this.globalRewardDraft) },
+      );
+      this.globalRewardDraft = result.multipliers;
+    }, "Global reward multipliers saved.");
+  }
+
   private async loadCatalog() {
     try {
       const result = await this.request<{ items: CatalogItem[] }>("/catalog");
@@ -725,6 +752,8 @@ export class RowanAdminPanel extends LitElement {
       this.selectedProfile = player;
       this.entitlementDraft = {
         xpMultiplier: player.xpMultiplier ?? 1,
+        softRewardMultiplier: player.softRewardMultiplier ?? 1,
+        hardRewardMultiplier: player.hardRewardMultiplier ?? 1,
         premium: player.premium === true,
         allCosmetics: player.allCosmetics === true,
         canCreatePublicLobbies: player.canCreatePublicLobbies === true,
@@ -756,6 +785,8 @@ export class RowanAdminPanel extends LitElement {
       );
       this.entitlementDraft = {
         xpMultiplier: result.player.xpMultiplier ?? 1,
+        softRewardMultiplier: result.player.softRewardMultiplier ?? 1,
+        hardRewardMultiplier: result.player.hardRewardMultiplier ?? 1,
         premium: result.player.premium === true,
         allCosmetics: result.player.allCosmetics === true,
         canCreatePublicLobbies: result.player.canCreatePublicLobbies === true,
@@ -863,6 +894,7 @@ export class RowanAdminPanel extends LitElement {
       maxTimerValue: config.maxTimerValue ?? null,
       winThresholdTenths: config.winThresholdTenths ?? null,
       goldMultiplier: config.goldMultiplier ?? null,
+      troopRegenMultiplier: config.troopRegenMultiplier ?? null,
       startingGold: config.startingGold ?? null,
       customAllianceDuration: config.customAllianceDuration ?? null,
       disableAlliances: config.disableAlliances ?? false,
@@ -884,6 +916,7 @@ export class RowanAdminPanel extends LitElement {
       disableAlliances: config.disableAlliances ?? false,
       waterNukes: config.waterNukes ?? false,
       goldMultiplier: config.goldMultiplier ?? null,
+      troopRegenMultiplier: config.troopRegenMultiplier ?? null,
       maxTimerValue: config.maxTimerValue ?? null,
       winThresholdTenths: config.winThresholdTenths ?? null,
       overtimeEnabled: config.overtime?.enabled ?? false,
@@ -956,6 +989,7 @@ export class RowanAdminPanel extends LitElement {
       maxTimerValue: d.maxTimerValue,
       winThresholdTenths: d.winThresholdTenths,
       goldMultiplier: d.goldMultiplier,
+      troopRegenMultiplier: d.troopRegenMultiplier,
       startingGold: d.startingGold,
       customAllianceDuration: d.customAllianceDuration,
       infiniteGold: d.infiniteGold,
@@ -1111,6 +1145,7 @@ export class RowanAdminPanel extends LitElement {
       disableAlliances: d.disableAlliances,
       waterNukes: d.waterNukes,
       goldMultiplier: d.goldMultiplier,
+      troopRegenMultiplier: d.troopRegenMultiplier,
       maxTimerValue: d.maxTimerValue,
       winThresholdTenths: d.winThresholdTenths,
       overtime: {
@@ -1222,6 +1257,22 @@ export class RowanAdminPanel extends LitElement {
     return html`<div class="cols">
       <div>
         <div class="card">
+          <h3>Global match rewards</h3>
+          <p>These multipliers apply to every account's match rewards, alongside each account's own settings.</p>
+          ${(["xp", "soft", "hard"] as const).map((key) => html`
+            <div class="row"><label>${key === "xp" ? "XP" : key === "soft" ? "Soft currency" : "Hard currency"} multiplier</label>
+              <input type="number" min="0" max="10" step="0.1"
+                .value=${String(this.globalRewardDraft[key])}
+                @input=${(event: Event) => {
+                  const raw = (event.target as HTMLInputElement).value;
+                  if (raw !== "") this.globalRewardDraft = {
+                    ...this.globalRewardDraft, [key]: numberValue(raw, 1, 0, 10),
+                  };
+                }} />
+            </div>`)}
+          <button class="primary" ?disabled=${this.busy} @click=${this.saveGlobalRewards}>Save global multipliers</button>
+        </div>
+        <div class="card">
           <h3>Local accounts</h3>
           <form
             class="row"
@@ -1312,6 +1363,32 @@ export class RowanAdminPanel extends LitElement {
                             ...this.entitlementDraft,
                             xpMultiplier: numberValue(value, 1, 0, 10),
                           };
+                      }}
+                    />
+                  </div>
+                  <div class="row">
+                    <label>Soft currency reward multiplier</label
+                    ><input type="number" min="0" max="10" step="0.1"
+                      .value=${String(this.entitlementDraft.softRewardMultiplier)}
+                      @input=${(event: Event) => {
+                        const value = (event.target as HTMLInputElement).value;
+                        if (value !== "") this.entitlementDraft = {
+                          ...this.entitlementDraft,
+                          softRewardMultiplier: numberValue(value, 1, 0, 10),
+                        };
+                      }}
+                    />
+                  </div>
+                  <div class="row">
+                    <label>Hard currency reward multiplier</label
+                    ><input type="number" min="0" max="10" step="0.1"
+                      .value=${String(this.entitlementDraft.hardRewardMultiplier)}
+                      @input=${(event: Event) => {
+                        const value = (event.target as HTMLInputElement).value;
+                        if (value !== "") this.entitlementDraft = {
+                          ...this.entitlementDraft,
+                          hardRewardMultiplier: numberValue(value, 1, 0, 10),
+                        };
                       }}
                     />
                   </div>
@@ -1696,6 +1773,7 @@ export class RowanAdminPanel extends LitElement {
           ${this.renderCheck("Collect live stats", "liveStatsEnabled")}
         </div>
         ${this.renderOptionalNumber("Gold multiplier", "goldMultiplier", 0.1, 1000, 0.1)}
+        ${this.renderOptionalNumber("Troop regen multiplier", "troopRegenMultiplier", 0.1, 20, 0.1)}
         ${this.renderOptionalNumber("Starting gold", "startingGold", 0, 1000000000)}
         ${this.renderOptionalNumber("Alliance duration", "customAllianceDuration", 0, 15)}
       </details>
@@ -1915,6 +1993,7 @@ export class RowanAdminPanel extends LitElement {
         ${this.renderLiveCheck("Overtime", "overtimeEnabled")}
       </div>
       ${this.renderLiveNumber("Gold multiplier", "goldMultiplier", 0.1, 1000, 0.1)}
+      ${this.renderLiveNumber("Troop regen multiplier", "troopRegenMultiplier", 0.1, 20, 0.1)}
       ${this.renderLiveNumber("Game timer (min)", "maxTimerValue", 1, 120)}
       ${this.renderLiveNumber("Win threshold (0.1%)", "winThresholdTenths", 100, 999)}
       ${this.renderLiveNumber("Alliance duration (min)", "customAllianceDuration", 0, 15)}
@@ -2137,11 +2216,11 @@ ${JSON.stringify(this.liveStats, null, 2)}</pre>`
                 class="panel"
                 role="dialog"
                 aria-modal="true"
-                aria-label="OpenFront admin panel"
+                aria-label="RowanFront admin panel"
               >
                 <header>
                   <div>
-                    <h2>OpenFront admin</h2>
+                    <h2>RowanFront admin</h2>
                     <small>Signed in as ${this.session.username}</small>
                   </div>
                   <nav>

@@ -120,7 +120,7 @@ export async function renderHtmlContent(
       cdnBase,
     ),
     desktopLogoImageUrl: buildAssetUrl(
-      "images/OpenFront.png",
+      "images/RowanFrontLogo.png",
       assetManifest,
       cdnBase,
     ),

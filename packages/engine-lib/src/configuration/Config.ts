@@ -420,6 +420,7 @@ export class Config {
       }
     }
 
+    toAdd *= this._gameConfig.troopRegenMultiplier ?? 1;
     return Math.min(player.troops() + toAdd, max) - player.troops();
   }
 

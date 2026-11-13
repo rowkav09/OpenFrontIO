@@ -302,6 +302,8 @@ describe("self-host profile administration", () => {
       }
       if (url.includes("/players?")) return json({ players: [player] });
       if (url.endsWith("/catalog")) return json({ items: [] });
+      if (url.endsWith("/reward-multipliers"))
+        return json({ multipliers: { xp: 1, soft: 1, hard: 1 } });
       if (url.endsWith("/player/friend-id")) {
         if (init?.method === "PATCH") {
           patch = {
@@ -342,8 +344,11 @@ describe("self-host profile administration", () => {
     await vi.waitFor(() =>
       expect(panel.shadowRoot!.textContent).toContain("Entitlements"),
     );
+    const entitlements = Array.from(
+      panel.shadowRoot!.querySelectorAll(".card"),
+    ).find((card) => card.querySelector("h3")?.textContent === "Entitlements")!;
     const multiplierRow = Array.from(
-      panel.shadowRoot!.querySelectorAll(".row"),
+      entitlements.querySelectorAll(".row"),
     ).find(
       (row) => row.querySelector("label")?.textContent === "XP multiplier",
     )!;
@@ -438,6 +443,7 @@ describe("self-host live game controls", () => {
         "disableAlliances",
         "waterNukes",
         "goldMultiplier",
+        "troopRegenMultiplier",
         "maxTimerValue",
         "winThresholdTenths",
         "overtime",

@@ -7,6 +7,7 @@ import {
 import { Cosmetics } from "@openfront/shared/CosmeticSchemas";
 import { html, LitElement, nothing, TemplateResult } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
+import { responseHasLinkedIdentity } from "../AccountIdentity";
 import {
   boostTribeName,
   getMyTribeNames,
@@ -15,6 +16,7 @@ import {
   purchaseTribeName,
   type PurchaseTribeNameResult,
 } from "../Api";
+import { ClientEnv } from "../ClientEnv";
 import { fetchCosmetics, InsufficientCurrency } from "../Cosmetics";
 import { showInGameConfirm } from "../InGameModal";
 import { translateText } from "../Utils";
@@ -91,10 +93,18 @@ export class TribesPanel extends LitElement {
   }
 
   protected updated() {
-    if (!this.loadStarted && this.userMeResponse !== false) {
+    if (!this.loadStarted && this.hasAccount()) {
       this.loadStarted = true;
       void this.load();
     }
+  }
+
+  private hasAccount(): boolean {
+    return (
+      this.userMeResponse !== false &&
+      (!ClientEnv.selfHosted() ||
+        responseHasLinkedIdentity(this.userMeResponse))
+    );
   }
 
   private async load() {
@@ -302,7 +312,7 @@ export class TribesPanel extends LitElement {
       currency: translateText("cosmetics.hard"),
       shortfall: Math.max(1, price - balance),
       item,
-      canTopUp: true,
+      canTopUp: !ClientEnv.selfHosted(),
     };
   }
 
@@ -602,7 +612,7 @@ export class TribesPanel extends LitElement {
   }
 
   render(): TemplateResult {
-    if (this.userMeResponse === false) {
+    if (!this.hasAccount()) {
       return this.renderLoginPrompt();
     }
     // The stats page takes over the whole tab, profile-modal style; its back
