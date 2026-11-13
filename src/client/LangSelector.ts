@@ -1,6 +1,7 @@
 import { assetUrl } from "@openfront/shared/AssetUrls";
 import { LitElement, html } from "lit";
 import { customElement, state } from "lit/decorators.js";
+import { ClientEnv } from "./ClientEnv";
 import { desktopSteamLocale } from "./DesktopShell";
 // The type-only use below is erased at runtime; keep this to register the modal.
 // oxlint-disable-next-line import/no-duplicates -- Required custom-element registration.
@@ -304,7 +305,9 @@ export class LangSelector extends LitElement {
       "clan-map-view",
     ];
 
-    document.title = this.translateText("main.title") ?? document.title;
+    document.title = ClientEnv.selfHosted()
+      ? "RowanFront"
+      : this.translateText("main.title") ?? document.title;
 
     document.querySelectorAll("[data-i18n]").forEach((element) => {
       const key = element.getAttribute("data-i18n");

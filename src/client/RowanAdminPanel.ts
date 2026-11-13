@@ -2216,11 +2216,11 @@ ${JSON.stringify(this.liveStats, null, 2)}</pre>`
                 class="panel"
                 role="dialog"
                 aria-modal="true"
-                aria-label="OpenFront admin panel"
+                aria-label="RowanFront admin panel"
               >
                 <header>
                   <div>
-                    <h2>OpenFront admin</h2>
+                    <h2>RowanFront admin</h2>
                     <small>Signed in as ${this.session.username}</small>
                   </div>
                   <nav>
