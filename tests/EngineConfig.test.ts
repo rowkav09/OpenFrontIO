@@ -29,6 +29,7 @@ describe("EngineConfig.unitInfo", () => {
 describe("Config.troopIncreaseRate", () => {
   it("applies the troop regeneration multiplier", () => {
     const player = {
+      id: () => "p1",
       units: () => [],
       type: () => PlayerType.Human,
       numTilesOwned: () => 100,
@@ -38,5 +39,23 @@ describe("Config.troopIncreaseRate", () => {
     const base = new Config({ infiniteTroops: false } as GameConfig, false);
     const doubled = new Config({ infiniteTroops: false, troopRegenMultiplier: 2 } as GameConfig, false);
     expect(doubled.troopIncreaseRate(player)).toBeCloseTo(base.troopIncreaseRate(player) * 2);
+  });
+
+  it("applies an extra percentage to only the selected player", () => {
+    const player = (id: string) => ({
+      id: () => id,
+      units: () => [],
+      type: () => PlayerType.Human,
+      numTilesOwned: () => 100,
+      troops: () => 1_000,
+      isLobbyCreator: () => false,
+    }) as unknown as PlayerLike;
+    const config = new Config({ infiniteTroops: false } as GameConfig, false);
+    const ordinary = config.troopIncreaseRate(player("p1"));
+    config.setPlayerTroopRegenBonus("p1", 50);
+    expect(config.troopIncreaseRate(player("p1"))).toBeCloseTo(ordinary * 1.5);
+    expect(config.troopIncreaseRate(player("p2"))).toBeCloseTo(ordinary);
+    config.setPlayerTroopRegenBonus("p1", 0);
+    expect(config.troopIncreaseRate(player("p1"))).toBeCloseTo(ordinary);
   });
 });

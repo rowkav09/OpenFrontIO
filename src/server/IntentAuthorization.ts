@@ -105,6 +105,8 @@ export function authorizeIntent(
       return null;
 
     case "admin_live_config":
+    case "admin_player_regen":
+    case "admin_nation_control":
       if (!actor.isAdminBot) {
         return {
           status: 403,

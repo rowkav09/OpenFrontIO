@@ -51,6 +51,7 @@ export class NationExecution implements Execution {
   private emojiBehavior!: NationEmojiBehavior;
   private mirvBehavior!: NationMIRVBehavior;
   private attackBehavior!: NationAttackBehavior;
+  private attackMeTarget: PlayerID | null = null;
   private allianceBehavior!: NationAllianceBehavior;
   private warshipBehavior!: NationWarshipBehavior;
   private nukeBehavior!: NationNukeBehavior;
@@ -80,6 +81,20 @@ export class NationExecution implements Execution {
 
   playerID(): string {
     return this.nation.playerInfo.id;
+  }
+
+  /** The owner may direct one adjacent land attack during a live match. */
+  commandAttack(targetId: PlayerID): boolean {
+    if (!this.player?.isAlive() || !this.behaviorsInitialized) return false;
+    const target = this.mg.allPlayers().find((p) => p.id() === targetId);
+    if (!target?.isAlive() || !this.player.sharesBorderWith(target)) return false;
+    this.attackBehavior.forceSendAttack(target);
+    return true;
+  }
+
+  /** Prefer this target on later attack ticks while the order is enabled. */
+  setAttackMeTarget(targetId: PlayerID | null): void {
+    this.attackMeTarget = targetId;
   }
 
   isInitialized(): boolean {
@@ -263,7 +278,9 @@ export class NationExecution implements Execution {
     this.structureBehavior.handleStructures();
     this.warshipBehavior.maybeSpawnWarship();
     this.handleEmbargoesToHostileNations();
-    this.attackBehavior.maybeAttack();
+    if (this.attackMeTarget === null || !this.commandAttack(this.attackMeTarget)) {
+      this.attackBehavior.maybeAttack();
+    }
     this.warshipBehavior.counterWarshipInfestation();
     this.nukeBehavior.maybeSendNuke();
   }
@@ -449,6 +466,7 @@ export class NationExecution implements Execution {
       expandRatio: this.expandRatio,
       embargoMalusApplied: [...this.embargoMalusApplied],
       spawnExecAdded: this.spawnExecAdded,
+      attackMeTarget: this.attackMeTarget,
       behaviors: this.behaviorsInitialized
         ? {
             emoji: this.emojiBehavior.snapshot(w),
@@ -487,6 +505,7 @@ export class NationExecution implements Execution {
     this.expandRatio = s.expandRatio;
     this.embargoMalusApplied = new Set(s.embargoMalusApplied);
     this.spawnExecAdded = s.spawnExecAdded;
+    this.attackMeTarget = s.attackMeTarget ?? null;
     this.behaviorsInitialized = s.behaviors !== null;
     const b = s.behaviors;
     const player = this.player;
@@ -542,6 +561,7 @@ const NationStateSchema = z.object({
   expandRatio: zNum(),
   embargoMalusApplied: z.array(z.string()),
   spawnExecAdded: z.boolean(),
+  attackMeTarget: z.string().nullable().optional(),
   behaviors: z
     .object({
       emoji: VersionedSchema,

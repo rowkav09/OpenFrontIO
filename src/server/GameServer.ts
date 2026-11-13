@@ -258,6 +258,8 @@ export class GameServer {
   private zbinCtx: ZbContext | undefined;
 
   private log: Logger;
+  private readonly playerRegenBonuses = new Map<ClientID, number>();
+  private readonly nationAttackMeTargets = new Map<string, string>();
 
   // Purchased bot tribe names drawn for this game, set when the prestart
   // fetch lands (undefined until then / on fetch failure / non-public games).
@@ -466,6 +468,53 @@ export class GameServer {
         if (this.paused) {
           // Deliver the rule change even while the ordinary turn timer is
           // suspended; the server remains paused afterward.
+          this.paused = false;
+          this.endTurn();
+          this.paused = true;
+        } else {
+          this.endTurn();
+        }
+        return finish({ status: 200 });
+      }
+
+      case "admin_player_regen": {
+        if (this.stage !== "started") {
+          return finish({ status: 409, error: "game not running" });
+        }
+        if (![...this.clients.all().values()].some(
+          (client) => client.clientID === stamped.targetClientID,
+        )) {
+          return finish({ status: 404, error: "player not in this game" });
+        }
+        if (stamped.bonusPercent === 0) {
+          this.playerRegenBonuses.delete(stamped.targetClientID);
+        } else {
+          this.playerRegenBonuses.set(stamped.targetClientID, stamped.bonusPercent);
+        }
+        this.addIntent(stamped);
+        if (this.paused) {
+          this.paused = false;
+          this.endTurn();
+          this.paused = true;
+        } else {
+          this.endTurn();
+        }
+        return finish({ status: 200 });
+      }
+
+      case "admin_nation_control": {
+        if (this.stage !== "started") {
+          return finish({ status: 409, error: "game not running" });
+        }
+        if (stamped.action === "attack_me") {
+          if (stamped.enabled === true) {
+            this.nationAttackMeTargets.set(stamped.nationId, stamped.targetId);
+          } else {
+            this.nationAttackMeTargets.delete(stamped.nationId);
+          }
+        }
+        this.addIntent(stamped);
+        if (this.paused) {
           this.paused = false;
           this.endTurn();
           this.paused = true;
@@ -1755,6 +1804,16 @@ export class GameServer {
       publicId: c.publicId,
       username: c.username,
     }));
+  }
+
+  /** Only returned by the authenticated admin-bot roster endpoint. */
+  public playerRegenBonusPercents(): Record<ClientID, number> {
+    return Object.fromEntries(this.playerRegenBonuses);
+  }
+
+  /** Owner-only admin-bot state, omitted from public game info. */
+  public nationAttackMeOrders(): Record<string, string> {
+    return Object.fromEntries(this.nationAttackMeTargets);
   }
 
   // `options` are the host's picks from the listing dialog: how long until

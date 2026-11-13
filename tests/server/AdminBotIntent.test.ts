@@ -243,6 +243,64 @@ describe("GameServer.handleIntent (admin bot)", () => {
     });
   });
 
+  describe("admin_player_regen", () => {
+    it("sends a selected player's bonus through a turn and keeps it out of public game info", () => {
+      const game = makeGame({ config: { gameType: GameType.Public } });
+      const player = makeClient({ clientID: cid("p1") });
+      game.joinClient(player);
+      startGame(game);
+      const result = apply(game, {
+        type: "admin_player_regen",
+        targetClientID: cid("p1"),
+        bonusPercent: 50,
+      });
+      expect(result.status).toBe(200);
+      expect(game.playerRegenBonusPercents()).toEqual({ [cid("p1")]: 50 });
+      expect(JSON.stringify(game.gameInfo())).not.toContain("playerRegenBonuses");
+      const ctx = createGameWireContext([{ clientID: cid("p1") }]);
+      const intents = mockWsOf(player)
+        .sent(ctx)
+        .flatMap((m) => (m.type === "turn" ? m.turn.intents : []));
+      expect(intents).toContainEqual({
+        type: "admin_player_regen",
+        clientID: ADMIN_BOT_CLIENT_ID,
+        targetClientID: cid("p1"),
+        bonusPercent: 50,
+      });
+    });
+  });
+
+  describe("admin_nation_control", () => {
+    it("delivers owner-only nation orders and exposes active targeting only to admin API", () => {
+      const game = makeGame({ config: { gameType: GameType.Public } });
+      const player = makeClient({ clientID: cid("p1") });
+      game.joinClient(player);
+      startGame(game);
+      const result = apply(game, {
+        type: "admin_nation_control",
+        action: "attack_me",
+        nationId: "nation-1",
+        targetId: "player-1",
+        enabled: true,
+      });
+      expect(result.status).toBe(200);
+      expect(game.nationAttackMeOrders()).toEqual({ "nation-1": "player-1" });
+      expect(JSON.stringify(game.gameInfo())).not.toContain("nationAttackMeOrders");
+      const ctx = createGameWireContext([{ clientID: cid("p1") }]);
+      const intents = mockWsOf(player)
+        .sent(ctx)
+        .flatMap((m) => (m.type === "turn" ? m.turn.intents : []));
+      expect(intents).toContainEqual({
+        type: "admin_nation_control",
+        clientID: ADMIN_BOT_CLIENT_ID,
+        action: "attack_me",
+        nationId: "nation-1",
+        targetId: "player-1",
+        enabled: true,
+      });
+    });
+  });
+
   describe("rejected intents", () => {
     it("rejects a gameplay intent with 400", () => {
       const game = makeGame();

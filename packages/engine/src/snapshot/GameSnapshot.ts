@@ -68,6 +68,7 @@ const RootSchema = z.object({
   gameID: z.string().nullable(),
   tick: z.number().int(),
   gameConfig: z.unknown(),
+  playerTroopRegenBonuses: z.array(z.tuple([z.string(), z.number()])).optional(),
   game: VersionedSchema,
   map: VersionedSchema,
   miniMap: VersionedSchema,
@@ -191,6 +192,7 @@ export function snapshotGameData(game: Game, opts: SnapshotOptions = {}): Root {
     tick: g.ticks(),
     // Canonical (schema) key order, which is what a restored game holds.
     gameConfig: GameConfigSchema.parse(g.config().gameConfig()),
+    playerTroopRegenBonuses: g.config().playerTroopRegenBonusEntries(),
     game: gameState,
     map: w.versioned(GameMapSnapshot, (g.map() as GameMapImpl).snapshot()),
     miniMap: w.versioned(
@@ -271,6 +273,9 @@ export function restoreGame(bytes: Uint8Array, deps: RestoreDeps): Game {
   const root = decodeRoot(bytes);
   const gameConfig = GameConfigSchema.parse(root.gameConfig);
   const config = deps.config(gameConfig);
+  for (const [playerId, bonusPercent] of root.playerTroopRegenBonuses ?? []) {
+    config.setPlayerTroopRegenBonus(playerId, bonusPercent);
+  }
 
   const state = readVersioned(GameSnapshot, root.game);
   (deps.gameMap as GameMapImpl).restoreSnapshot(

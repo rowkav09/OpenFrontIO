@@ -47,6 +47,8 @@ export type Intent =
   | TogglePauseIntent
   | UpdateGameConfigIntent
   | AdminLiveConfigIntent
+  | AdminPlayerRegenIntent
+  | AdminNationControlIntent
   | ToggleGameStartTimer;
 
 export type AttackIntent = z.infer<typeof AttackIntentSchema>;
@@ -82,6 +84,8 @@ export type UpdateGameConfigIntent = z.infer<
   typeof UpdateGameConfigIntentSchema
 >;
 export type AdminLiveConfigIntent = z.infer<typeof AdminLiveConfigIntentSchema>;
+export type AdminPlayerRegenIntent = z.infer<typeof AdminPlayerRegenIntentSchema>;
+export type AdminNationControlIntent = z.infer<typeof AdminNationControlIntentSchema>;
 export type ToggleGameStartTimer = z.infer<
   typeof ToggleGameStartTimerIntentSchema
 >;
@@ -598,6 +602,20 @@ export const AdminLiveConfigIntentSchema = z.object({
   config: zb.json(LiveGameConfigPatchSchema),
 });
 
+export const AdminPlayerRegenIntentSchema = z.object({
+  type: z.literal("admin_player_regen"),
+  targetClientID: z.string().min(1),
+  bonusPercent: zb.float({ min: 0, max: 1900 }),
+});
+
+export const AdminNationControlIntentSchema = z.object({
+  type: z.literal("admin_nation_control"),
+  action: z.enum(["attack", "attack_me"]),
+  nationId: z.string().min(1),
+  targetId: z.string().min(1),
+  enabled: z.boolean().optional(),
+});
+
 export const ToggleGameStartTimerIntentSchema = z.object({
   type: z.literal("toggle_game_start_timer"),
 });
@@ -629,6 +647,8 @@ export const IntentSchema = z.discriminatedUnion("type", [
   UpdateGameConfigIntentSchema,
   ToggleGameStartTimerIntentSchema,
   AdminLiveConfigIntentSchema,
+  AdminPlayerRegenIntentSchema,
+  AdminNationControlIntentSchema,
 ]);
 
 // StampedIntent = Intent with server-stamped clientID (used in turns and execution)

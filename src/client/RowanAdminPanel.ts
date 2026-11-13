@@ -201,8 +201,10 @@ export class RowanAdminPanel extends LitElement {
   @state() private games: AdminGame[] = [];
   @state() private selectedId = "";
   @state() private roster: RosterPlayer[] = [];
+  @state() private playerRegenDrafts: Record<string, number> = {};
   @state() private liveStats: unknown = null;
   @state() private tab: "profiles" | "overview" | "lobby" | "game" = "profiles";
+  @state() private inMatch = false;
   @state() private profileQuery = "";
   @state() private profiles: LocalProfile[] = [];
   @state() private selectedProfile: LocalProfile | null = null;
@@ -337,6 +339,9 @@ export class RowanAdminPanel extends LitElement {
       display: grid;
       grid-template-columns: minmax(250px, 0.8fr) minmax(0, 1.7fr);
       gap: 18px;
+    }
+    .cols.match-only {
+      grid-template-columns: minmax(0, 1fr);
     }
     .card {
       border: 1px solid #315469;
@@ -552,6 +557,9 @@ export class RowanAdminPanel extends LitElement {
       "join-lobby",
       this.onLobbyJoined as EventListener,
     );
+    document.addEventListener("game-starting", this.onGameStarting);
+    document.addEventListener("leave-lobby", this.onLeaveLobby);
+    document.addEventListener("menu-restored", this.onLeaveLobby);
     this.selectedId = this.gameIdFromLocation() ?? "";
     const requestedOpen =
       new URL(window.location.href).searchParams.has("rowan-admin") ||
@@ -576,6 +584,9 @@ export class RowanAdminPanel extends LitElement {
       "join-lobby",
       this.onLobbyJoined as EventListener,
     );
+    document.removeEventListener("game-starting", this.onGameStarting);
+    document.removeEventListener("leave-lobby", this.onLeaveLobby);
+    document.removeEventListener("menu-restored", this.onLeaveLobby);
     window.clearInterval(this.refreshTimer);
     super.disconnectedCallback();
   }
@@ -613,6 +624,18 @@ export class RowanAdminPanel extends LitElement {
 
   private onLobbyJoined = (event: CustomEvent<{ gameID: string }>) => {
     if (event.detail?.gameID) this.selectedId = event.detail.gameID;
+  };
+
+  private onGameStarting = () => {
+    this.inMatch = true;
+    this.tab = "game";
+    this.selectedId = this.gameIdFromLocation() ?? this.selectedId;
+    if (this.open && this.session.authenticated) void this.loadGames();
+  };
+
+  private onLeaveLobby = () => {
+    this.inMatch = false;
+    if (this.tab === "game") this.tab = "profiles";
   };
 
   private gameIdFromLocation(): string | null {
@@ -660,6 +683,10 @@ export class RowanAdminPanel extends LitElement {
   private async opened() {
     this.error = "";
     if (!(await this.checkSession())) return;
+    if (this.inMatch) {
+      this.tab = "game";
+      this.selectedId = this.gameIdFromLocation() ?? this.selectedId;
+    }
     this.open = true;
     if (this.tab === "profiles") {
       await Promise.all([this.loadProfiles(), this.loadCatalog(), this.loadGlobalRewards()]);
@@ -859,10 +886,11 @@ export class RowanAdminPanel extends LitElement {
     if (!this.selectedId) return;
     const id = encodeURIComponent(this.selectedId);
     const [roster, stats] = await Promise.all([
-      this.request<{ players: RosterPlayer[] }>(`/game/${id}/roster`),
+      this.request<{ players: RosterPlayer[]; playerRegenBonuses?: Record<string, number> }>(`/game/${id}/roster`),
       this.request<{ liveStats: unknown }>(`/game/${id}/stats`),
     ]);
     this.roster = roster.players ?? [];
+    this.playerRegenDrafts = { ...(roster.playerRegenBonuses ?? {}) };
     this.liveStats = stats.liveStats;
   }
 
@@ -1183,6 +1211,18 @@ export class RowanAdminPanel extends LitElement {
     await this.sendIntent(
       { type: "kick_player", targetClientID: player.clientID },
       `${player.username} was removed from this game.`,
+    );
+  }
+
+  private async setPlayerRegen(player: RosterPlayer) {
+    const bonusPercent = this.playerRegenDrafts[player.clientID] ?? 0;
+    if (!Number.isFinite(bonusPercent) || bonusPercent < 0 || bonusPercent > 1900) {
+      this.error = "Regeneration bonus must be from 0% to 1900%.";
+      return;
+    }
+    await this.sendIntent(
+      { type: "admin_player_regen", targetClientID: player.clientID, bonusPercent },
+      `${player.username}'s troop regeneration bonus is ${bonusPercent}%.`,
     );
   }
 
@@ -2046,8 +2086,8 @@ export class RowanAdminPanel extends LitElement {
 
   private renderGame() {
     const game = this.selectedGame();
-    return html` <div class="cols">
-      <div>${this.renderGames()}</div>
+    return html` <div class="cols ${this.inMatch ? "match-only" : ""}">
+      ${this.inMatch ? nothing : html`<div>${this.renderGames()}</div>`}
       <div>
         ${
           game
@@ -2117,6 +2157,7 @@ export class RowanAdminPanel extends LitElement {
                             <tr>
                               <th>Name</th>
                               <th>Player ID</th>
+                              <th>Regen bonus</th>
                               <th>Action</th>
                             </tr>
                           </thead>
@@ -2129,6 +2170,27 @@ export class RowanAdminPanel extends LitElement {
                                     <small
                                       >${player.publicId ?? player.clientID}</small
                                     >
+                                  </td>
+                                  <td>
+                                    <div class="row">
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        max="1900"
+                                        step="5"
+                                        aria-label=${`${player.username} troop regeneration bonus percent`}
+                                        .value=${String(this.playerRegenDrafts[player.clientID] ?? 0)}
+                                        @input=${(event: Event) => {
+                                          const value = Number((event.target as HTMLInputElement).value);
+                                          this.playerRegenDrafts = { ...this.playerRegenDrafts, [player.clientID]: value };
+                                        }}
+                                      />%
+                                      <button
+                                        class="secondary"
+                                        ?disabled=${this.busy || game.phase !== "ACTIVE"}
+                                        @click=${() => this.setPlayerRegen(player)}
+                                      >Set</button>
+                                    </div>
                                   </td>
                                   <td>
                                     <button
@@ -2220,10 +2282,10 @@ ${JSON.stringify(this.liveStats, null, 2)}</pre>`
               >
                 <header>
                   <div>
-                    <h2>RowanFront admin</h2>
+                    <h2>${this.inMatch ? "RowanFront game admin" : "RowanFront admin"}</h2>
                     <small>Signed in as ${this.session.username}</small>
                   </div>
-                  <nav>
+                  ${this.inMatch ? nothing : html`<nav>
                     <button
                       class=${this.tab === "profiles" ? "active" : ""}
                       @click=${() => {
@@ -2264,7 +2326,7 @@ ${JSON.stringify(this.liveStats, null, 2)}</pre>`
                     <button class="secondary" @click=${this.logout}>
                       Sign out
                     </button>
-                  </nav>
+                  </nav>`}
                   <button
                     class="close"
                     aria-label="Close admin panel"
@@ -2277,7 +2339,9 @@ ${JSON.stringify(this.liveStats, null, 2)}</pre>`
                   ${this.error ? html`<div class="status error" role="alert">${this.error}</div>` : nothing}
                   ${this.message ? html`<div class="status" role="status">${this.message}</div>` : nothing}
                   ${
-                    this.tab === "profiles"
+                    this.inMatch
+                      ? this.renderGame()
+                      : this.tab === "profiles"
                       ? this.renderProfiles()
                       : this.tab === "overview"
                         ? this.renderOverview()

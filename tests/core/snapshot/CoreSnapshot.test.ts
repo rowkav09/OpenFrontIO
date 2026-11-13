@@ -65,4 +65,15 @@ describe("core snapshot", () => {
       [],
     );
   });
+
+  test("restores owner-set player troop regeneration bonuses", async () => {
+    const game = await builtGame();
+    const alice = game.player("alice");
+    game.config().setPlayerTroopRegenBonus(alice.id(), 75);
+    const { restored } = await roundTrip(game, MAP);
+    expect(restored.config().playerTroopRegenBonusEntries()).toEqual([
+      [alice.id(), 75],
+    ]);
+    expect(diffSnapshots(snapshotGame(game), snapshotGame(restored))).toEqual([]);
+  });
 });
