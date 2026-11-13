@@ -11,6 +11,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import { ifDefined } from "lit/directives/if-defined.js";
 import { hasLinkedIdentity } from "../AccountIdentity";
 import { logOut } from "../Auth";
+import { ClientEnv } from "../ClientEnv";
 import { gamePortal, type PortalUser } from "../GamePortal";
 import { showInGameConfirm } from "../InGameModal";
 import {
@@ -69,6 +70,7 @@ function prefersReducedMotion(): boolean {
 type MenuItem = {
   key: string;
   labelKey: string;
+  label?: string;
   icon: TemplateResult;
   onSelect: () => void;
   danger?: boolean;
@@ -381,6 +383,32 @@ export class NavAccountMenu extends LitElement {
       ];
     }
 
+    // This standalone server has a local admin account, not the upstream
+    // account/profile/store API. Keep the account menu focused on controls
+    // that actually exist here.
+    if (
+      ClientEnv.selfHosted() &&
+      this.userMeResponse !== false &&
+      this.userMeResponse.user.local
+    ) {
+      return [
+        {
+          key: "admin-panel",
+          labelKey: "admin-panel",
+          label: "Admin panel",
+          icon: iconGear,
+          onSelect: () => window.dispatchEvent(new Event("open-rowan-admin")),
+        },
+        {
+          key: "log-out",
+          labelKey: "nav_account_menu.log_out",
+          icon: iconLogOut,
+          onSelect: () => void this.handleLogOut(),
+          danger: true,
+        },
+      ];
+    }
+
     const player =
       this.userMeResponse === false ? null : this.userMeResponse.player;
     // A past_due subscriber still needs the panel: it is where they reach
@@ -461,6 +489,10 @@ export class NavAccountMenu extends LitElement {
   // Portal players sign in through the SDK prompt; everyone else through
   // the account modal's login options.
   private signIn(): void {
+    if (ClientEnv.selfHosted()) {
+      window.dispatchEvent(new Event("open-rowan-admin"));
+      return;
+    }
     if (gamePortal.isOnGamePortal()) {
       void gamePortal.showAuthPrompt();
       return;
@@ -546,7 +578,7 @@ export class NavAccountMenu extends LitElement {
             >
               <span class="w-4 h-4 shrink-0">${item.icon}</span>
               <span class="min-w-0 break-words"
-                >${translateText(item.labelKey)}</span
+                >${item.label ?? translateText(item.labelKey)}</span
               >
             </button>
           `,

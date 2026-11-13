@@ -109,15 +109,43 @@ export class ServerEnv {
   static cdnBase(): string {
     return process.env.CDN_BASE ?? "";
   }
+  static selfHosted(): boolean {
+    return process.env.SELF_HOSTED === "1";
+  }
   static jwtIssuer(): string {
+    if (ServerEnv.selfHosted()) {
+      const value = process.env.SELF_HOST_ORIGIN;
+      if (!value) throw new Error("SELF_HOST_ORIGIN not set");
+      const origin = new URL(value);
+      if (
+        origin.protocol !== "https:" ||
+        origin.hostname !== ServerEnv.jwtAudience() ||
+        origin.pathname !== "/" ||
+        origin.search !== "" ||
+        origin.hash !== ""
+      ) {
+        throw new Error("Invalid SELF_HOST_ORIGIN");
+      }
+      return origin.origin;
+    }
     const audience = ServerEnv.jwtAudience();
     return audience === "localhost"
       ? "http://localhost:8787"
       : `https://api.${audience}`;
   }
+  static accountApiBase(): string {
+    if (!ServerEnv.selfHosted()) return ServerEnv.jwtIssuer();
+    const value = process.env.LOCAL_AUTH_BASE;
+    if (!value) throw new Error("LOCAL_AUTH_BASE not set");
+    const base = new URL(value);
+    if (base.protocol !== "http:" || base.pathname !== "/") {
+      throw new Error("Invalid LOCAL_AUTH_BASE");
+    }
+    return base.origin;
+  }
   static async jwkPublicKey(): Promise<JWK> {
     if (ServerEnv.publicKey) return ServerEnv.publicKey;
-    const jwksUrl = ServerEnv.jwtIssuer() + "/.well-known/jwks.json";
+    const jwksUrl = ServerEnv.accountApiBase() + "/.well-known/jwks.json";
     console.log(`Fetching JWKS from ${jwksUrl}`);
     // A redirect would forward x-api-key to the new origin; the JWKS
     // endpoint never redirects, so refuse to follow one.

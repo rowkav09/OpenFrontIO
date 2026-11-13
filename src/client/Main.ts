@@ -90,6 +90,7 @@ import { GameStartingModal } from "./GameStartingModal";
 import { syncHashedEmail } from "./HashedEmail";
 import type { HelpModal } from "./HelpModal";
 import "./HomepagePromos";
+import "./RowanAdminPanel";
 import type { HomepagePromos } from "./HomepagePromos";
 import type { HostLobbyModal as HostPrivateLobbyModal } from "./HostLobbyModal";
 import { showInGameAlert, showInGameConfirm } from "./InGameModal";
@@ -538,10 +539,12 @@ class Client {
       tag: "single-player-modal",
       pageId: "page-single-player",
     });
-    modalRouter.register("ranked", {
-      tag: "ranked-modal",
-      pageId: "page-ranked",
-    });
+    if (!ClientEnv.selfHosted()) {
+      modalRouter.register("ranked", {
+        tag: "ranked-modal",
+        pageId: "page-ranked",
+      });
+    }
     modalRouter.register("detailed-view", {
       tag: "detailed-view-modal",
       pageId: "page-detailed-view",

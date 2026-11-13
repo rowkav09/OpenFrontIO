@@ -39,6 +39,11 @@ export class GameManager {
     return this.games.get(id) ?? null;
   }
 
+  // Used by the key-gated admin dashboard, not public lobby listings.
+  public allGames(): GameServer[] {
+    return [...this.games.values()];
+  }
+
   public publicLobbies(): GameServer[] {
     return Array.from(this.games.values()).filter(
       (g) => g.phase() === GamePhase.Lobby && g.isPublic(),

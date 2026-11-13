@@ -23,7 +23,7 @@ import type {
 import type { Logger } from "winston";
 import { z } from "zod";
 import type { GameManager } from "./GameManager";
-import type { GameServer } from "./GameServer";
+import { GamePhase, type GameServer } from "./GameServer";
 import { ServerEnv } from "./ServerEnv";
 
 // Team-pinning caps. A lobby tops out well below these; they exist so a bad
@@ -101,12 +101,9 @@ function parseCreateGameRequest(reqBody: unknown): ParsedCreateGame {
   // `listed` lives on GameServer precisely so it can't be smuggled through
   // GameConfig, and the schema parse above strips it from `config` for us.
   //
-  // Set at CREATE time rather than via a follow-up toggle because a bot never
-  // needs to withdraw a listing by hand — a lobby delists itself the moment it
-  // starts, fills or dies. The human toggle (POST /api/game/:id/listing) can't
-  // serve a bot: it authorizes via isCreator + subscription, and an admin-bot
-  // lobby is deliberately created with NO creatorPersistentID (below), so it has
-  // no owner to match and no account to bill.
+  // Set at create time so the lobby is listed atomically. The separate
+  // key-gated listing route lets the self-host admin change visibility later;
+  // the human route cannot manage a bot-created lobby without a creator.
   //
   // `featured` rides alongside for the same reason. It lengthens the listing
   // deadline and gives the row a label of the host's choosing, which is only
@@ -261,6 +258,22 @@ export function registerAdminBotRoutes(opts: {
     return true;
   };
 
+  // Normal listings omit private lobbies and running games. Only the
+  // key-gated admin dashboard may enumerate them.
+  app.get("/api/adminbot/games", requireAdminBotKey, (_req, res) => {
+    res.json({
+      workerIndex: workerId,
+      games: gm.allGames().map((game) => ({
+        ...game.gameInfo(),
+        phase: game.phase(),
+        paused: game.isPaused(),
+        playerCount: game.numClients(),
+        workerIndex: workerId,
+        workerPath: ServerEnv.workerPath(game.id),
+      })),
+    });
+  });
+
   // Create a private game. The worker mints a self-owned id and returns it, so
   // the bot doesn't need to know the sharding. nginx (and the vite dev proxy)
   // randomly route here to spread new games across workers.
@@ -410,6 +423,42 @@ export function registerAdminBotRoutes(opts: {
       gameID: id,
       liveStats: game.liveStats(),
     });
+  });
+
+  // Visibility is server-owned state, deliberately separate from GameConfig.
+  // The browser admin panel reaches this only through its authenticated
+  // gateway; ordinary clients cannot make themselves a lobby creator and use
+  // the human listing route for an admin-bot-created game.
+  app.post("/api/adminbot/game/:id/listing", requireAdminBotKey, (req, res) => {
+    const id = req.params.id as string;
+    if (!ownsGame(id, res)) return;
+    const parsed = z.object({ listed: z.boolean() }).safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: z.prettifyError(parsed.error) });
+    }
+    const game = gm.game(id);
+    if (game === null) {
+      return res.status(404).json({ error: "Game not found" });
+    }
+    if (game.isPublic() || game.phase() !== GamePhase.Lobby) {
+      return res.status(409).json({ error: "Game cannot change listing" });
+    }
+    if (parsed.data.listed && !game.isListed()) {
+      if (game.hasJoinWhitelist()) {
+        return res.status(409).json({ error: "listing_whitelist_enabled" });
+      }
+      if (game.hasHostCheats()) {
+        return res.status(409).json({ error: "listing_host_cheats_enabled" });
+      }
+    }
+    game.setListed(parsed.data.listed);
+    log.info(
+      `admin bot listing ${parsed.data.listed ? "enabled" : "disabled"}`,
+      {
+        gameID: id,
+      },
+    );
+    res.json({ listed: game.isListed(), gameID: id });
   });
 
   // Send an intent. Honors the lobby-management intents; everything else 400.
