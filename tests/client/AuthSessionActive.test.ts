@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getApiBase } from "../../src/client/ApiBase";
 import {
   clearLocalSession,
+  getPlayToken,
   isSessionActive,
   reauthAfterPortalChange,
   userAuth,
@@ -131,5 +132,29 @@ describe("isSessionActive against a real in-memory JWT", () => {
     } finally {
       document.removeEventListener("local-auth-changed", changed);
     }
+  });
+
+  it("refreshes a stale guest token before joining a self-hosted match", async () => {
+    window.BOOTSTRAP_CONFIG = {
+      ...window.BOOTSTRAP_CONFIG!,
+      selfHosted: true,
+    };
+    ClientEnv.reset();
+    await signIn(ME);
+
+    const accountJwt = jwtFor(SOMEONE_ELSE);
+    const refresh = vi.fn(async () => ({
+      status: 200,
+      json: async () => ({ jwt: accountJwt, expiresIn: 3600 }),
+    }));
+    vi.stubGlobal("fetch", refresh);
+
+    expect(await getPlayToken()).toBe(accountJwt);
+    expect(refresh).toHaveBeenCalledOnce();
+    expect(refresh).toHaveBeenCalledWith(
+      `${getApiBase()}/auth/refresh`,
+      expect.objectContaining({ method: "POST", credentials: "include" }),
+    );
+    expect(isSessionActive(SOMEONE_ELSE)).toBe(true);
   });
 });
