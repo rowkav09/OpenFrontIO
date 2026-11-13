@@ -1,5 +1,6 @@
 import { html, LitElement, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
+import { ClientEnv } from "../ClientEnv";
 import type { InsufficientCurrency } from "../Cosmetics";
 import { translateText } from "../Utils";
 import "./ConfirmDialog";
@@ -23,6 +24,7 @@ export class InsufficientCurrencyDialog extends LitElement {
   render() {
     const info = this.info;
     if (!info) return nothing;
+    const canTopUp = info.canTopUp && !ClientEnv.selfHosted();
     return html`<confirm-dialog
       .heading=${translateText("store.insufficient_currency_title", {
         currency: info.currency,
@@ -35,9 +37,9 @@ export class InsufficientCurrencyDialog extends LitElement {
       variant="warning"
       .wide=${true}
       .showClose=${true}
-      .buttons=${info.canTopUp ? "confirmOnly" : "none"}
+      .buttons=${canTopUp ? "confirmOnly" : "none"}
       .confirmText=${
-        info.canTopUp
+        canTopUp
           ? translateText("store.purchase_currency", {
               currency: info.currency,
             })

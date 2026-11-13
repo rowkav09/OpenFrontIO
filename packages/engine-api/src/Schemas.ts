@@ -46,6 +46,7 @@ export type Intent =
   | KickPlayerIntent
   | TogglePauseIntent
   | UpdateGameConfigIntent
+  | AdminLiveConfigIntent
   | ToggleGameStartTimer;
 
 export type AttackIntent = z.infer<typeof AttackIntentSchema>;
@@ -80,6 +81,7 @@ export type TogglePauseIntent = z.infer<typeof TogglePauseIntentSchema>;
 export type UpdateGameConfigIntent = z.infer<
   typeof UpdateGameConfigIntentSchema
 >;
+export type AdminLiveConfigIntent = z.infer<typeof AdminLiveConfigIntentSchema>;
 export type ToggleGameStartTimer = z.infer<
   typeof ToggleGameStartTimerIntentSchema
 >;
@@ -352,6 +354,32 @@ export const GameConfigPatchSchema = GameConfigSchema.partial().extend({
 });
 export type GameConfigPatch = z.infer<typeof GameConfigPatchSchema>;
 
+// Rules that are read while a match is running. Map generation, team
+// assignment, bots, starting resources and the game type are fixed at start.
+// The strict schema prevents a live admin action from silently accepting an
+// inert or unsafe setting.
+export const LiveGameConfigPatchSchema = GameConfigSchema.pick({
+  donateGold: true,
+  donateTroops: true,
+  infiniteGold: true,
+  infiniteTroops: true,
+  instantBuild: true,
+  disableAlliances: true,
+  waterNukes: true,
+  goldMultiplier: true,
+  maxTimerValue: true,
+  winThresholdTenths: true,
+  overtime: true,
+  disabledUnits: true,
+  customAllianceDuration: true,
+})
+  .partial()
+  .strict()
+  .refine((patch) => Object.keys(patch).length > 0, {
+    error: "at least one live rule is required",
+  });
+export type LiveGameConfigPatch = z.infer<typeof LiveGameConfigPatchSchema>;
+
 export const TeamSchema = z.string();
 
 export const SafeString = z
@@ -563,6 +591,11 @@ export const UpdateGameConfigIntentSchema = z.object({
   config: zb.json(GameConfigPatchSchema),
 });
 
+export const AdminLiveConfigIntentSchema = z.object({
+  type: z.literal("admin_live_config"),
+  config: zb.json(LiveGameConfigPatchSchema),
+});
+
 export const ToggleGameStartTimerIntentSchema = z.object({
   type: z.literal("toggle_game_start_timer"),
 });
@@ -593,6 +626,7 @@ export const IntentSchema = z.discriminatedUnion("type", [
   TogglePauseIntentSchema,
   UpdateGameConfigIntentSchema,
   ToggleGameStartTimerIntentSchema,
+  AdminLiveConfigIntentSchema,
 ]);
 
 // StampedIntent = Intent with server-stamped clientID (used in turns and execution)

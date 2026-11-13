@@ -326,6 +326,33 @@ describe("Client.initialize() booted from Main.ts module scope", () => {
     expect(window.adsEnabled).toBe(true);
   });
 
+  it("refreshes premium account state after an in-place local login", async () => {
+    const localUser = {
+      ...(userMeFixture() as object),
+      user: { local: { username: "rowkav", isAdmin: true } },
+      player: {
+        ...(userMeFixture() as { player: object }).player,
+        adfree: true,
+      },
+    };
+    mocks.getUserMe.mockImplementation(async () => localUser);
+    const seen = vi.fn();
+    document.addEventListener("userMeResponse", seen);
+    try {
+      document.dispatchEvent(new Event("local-auth-changed"));
+      await vi.waitFor(() => expect(window.adsEnabled).toBe(false));
+      expect(mocks.invalidateUserMe).toHaveBeenCalled();
+      expect(seen).toHaveBeenCalledWith(
+        expect.objectContaining({ detail: localUser }),
+      );
+    } finally {
+      document.removeEventListener("userMeResponse", seen);
+      mocks.getUserMe.mockImplementation(async () => false);
+      document.dispatchEvent(new Event("local-auth-changed"));
+      await vi.waitFor(() => expect(window.adsEnabled).toBe(true));
+    }
+  });
+
   it("clears the stale achievements.pushed record", () => {
     expect(localStorage.getItem("achievements.pushed")).toBeNull();
   });

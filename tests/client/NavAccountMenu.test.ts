@@ -113,26 +113,48 @@ describe("nav-account-menu", () => {
     expect(itemKeys()).toEqual(["sign-in"]);
   });
 
-  it("routes local guest sign-in and admin account menu to the admin panel", async () => {
+  it("routes local guest sign-in to Account and keeps admin's normal profile menu", async () => {
     const selfHosted = vi.spyOn(ClientEnv, "selfHosted").mockReturnValue(true);
     const openAdmin = vi.fn();
+    const showPage = vi.fn();
+    window.showPage = showPage;
     window.addEventListener("open-rowan-admin", openAdmin);
     try {
       fireUserMe(false);
       await el.updateComplete;
       await click(trigger());
       await click(document.querySelector('[data-menu-item="sign-in"]')!);
-      expect(openAdmin).toHaveBeenCalledTimes(1);
+      expect(showPage).toHaveBeenCalledWith("page-account");
+      expect(openAdmin).not.toHaveBeenCalled();
 
       fireUserMe({
-        user: { local: { username: "rowkav" } },
+        user: { local: { username: "rowkav", isAdmin: true } },
         player: { publicId: "local-admin" },
       } as unknown as UserMeResponse);
       await el.updateComplete;
       await click(trigger());
-      expect(itemKeys()).toEqual(["admin-panel", "log-out"]);
+      expect(itemKeys()).toEqual([
+        "copy-profile-url",
+        "view-account",
+        "view-profile",
+        "admin-panel",
+        "log-out",
+      ]);
       await click(document.querySelector('[data-menu-item="admin-panel"]')!);
-      expect(openAdmin).toHaveBeenCalledTimes(2);
+      expect(openAdmin).toHaveBeenCalledTimes(1);
+
+      fireUserMe({
+        user: { local: { username: "friend", isAdmin: false } },
+        player: { publicId: "local-friend" },
+      } as unknown as UserMeResponse);
+      await el.updateComplete;
+      await click(trigger());
+      expect(itemKeys()).toEqual([
+        "copy-profile-url",
+        "view-account",
+        "view-profile",
+        "log-out",
+      ]);
     } finally {
       window.removeEventListener("open-rowan-admin", openAdmin);
       selfHosted.mockRestore();

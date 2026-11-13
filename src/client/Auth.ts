@@ -703,7 +703,11 @@ export async function reauthAfterPortalChange(): Promise<UserAuth> {
       }
       __jwt = null;
       __expiresAt = 0;
-      return await userAuth();
+      const auth = await userAuth();
+      if (ClientEnv.selfHosted()) {
+        document.dispatchEvent(new Event("local-auth-changed"));
+      }
+      return auth;
     } finally {
       __reauthPromise = null;
     }

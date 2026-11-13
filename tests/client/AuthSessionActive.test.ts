@@ -6,6 +6,7 @@ import { getApiBase } from "../../src/client/ApiBase";
 import {
   clearLocalSession,
   isSessionActive,
+  reauthAfterPortalChange,
   userAuth,
 } from "../../src/client/Auth";
 import { ClientEnv } from "../../src/client/ClientEnv";
@@ -112,5 +113,23 @@ describe("isSessionActive against a real in-memory JWT", () => {
 
   it("is false with no session at all", () => {
     expect(isSessionActive(ME)).toBe(false);
+  });
+
+  it("announces a self-host session upgrade so the account can refresh", async () => {
+    window.BOOTSTRAP_CONFIG = {
+      ...window.BOOTSTRAP_CONFIG!,
+      selfHosted: true,
+    };
+    ClientEnv.reset();
+    await signIn(ME);
+
+    const changed = vi.fn();
+    document.addEventListener("local-auth-changed", changed);
+    try {
+      expect(await reauthAfterPortalChange()).not.toBe(false);
+      expect(changed).toHaveBeenCalledOnce();
+    } finally {
+      document.removeEventListener("local-auth-changed", changed);
+    }
   });
 });

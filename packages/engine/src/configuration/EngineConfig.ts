@@ -10,7 +10,10 @@ import {
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
 import { PlayerLike } from "@openfront/engine-api/game/ReadViews";
-import { TeamCountConfig } from "@openfront/engine-api/Schemas";
+import {
+  LiveGameConfigPatch,
+  TeamCountConfig,
+} from "@openfront/engine-api/Schemas";
 import { NukeType } from "@openfront/engine-api/StatsSchemas";
 import { Config } from "@openfront/engine-lib/configuration/Config";
 import { exp, log, pow2 } from "@openfront/engine-lib/DetMath";
@@ -124,6 +127,11 @@ function terrainAttackBase(terrain: TerrainType): {
  */
 export class EngineConfig extends Config {
   private engineUnitInfoCache = new Map<UnitType, EngineUnitInfo>();
+
+  override applyLiveGameConfigPatch(patch: LiveGameConfigPatch): void {
+    super.applyLiveGameConfigPatch(patch);
+    if (patch.instantBuild !== undefined) this.engineUnitInfoCache.clear();
+  }
 
   traitorSpeedDebuff(): number {
     return 0.8;

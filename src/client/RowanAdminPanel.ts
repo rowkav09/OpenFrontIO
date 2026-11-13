@@ -2,6 +2,7 @@ import {
   Difficulty,
   GameMapSize,
   GameMode,
+  GameType,
   listedMaps,
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
@@ -37,6 +38,32 @@ type RosterPlayer = {
   username: string;
 };
 
+type LocalProfile = {
+  publicId: string;
+  username: string;
+  role: string;
+  createdAt: string;
+  games: number;
+  wins: number;
+  totalXp: number;
+  level: number;
+  xpMultiplier: number;
+  premium: boolean;
+  allCosmetics: boolean;
+  ownedCosmetics: string[];
+  softCurrency: number;
+  hardCurrency: number;
+  canCreatePublicLobbies: boolean;
+};
+
+type CatalogItem = {
+  id: string;
+  type: string;
+  name: string;
+  priceSoft?: number;
+  priceHard?: number;
+};
+
 type ConfigDraft = {
   gameMap: string;
   difficulty: Difficulty;
@@ -65,6 +92,42 @@ type ConfigDraft = {
   hostCheatInfiniteTroops: boolean;
   hostCheatGoldMultiplier: number | null;
   hostCheatStartingGold: number | null;
+};
+
+type LiveDraft = Pick<
+  ConfigDraft,
+  | "donateGold"
+  | "donateTroops"
+  | "infiniteGold"
+  | "infiniteTroops"
+  | "instantBuild"
+  | "disableAlliances"
+  | "goldMultiplier"
+  | "maxTimerValue"
+  | "winThresholdTenths"
+  | "disabledUnits"
+  | "customAllianceDuration"
+> & {
+  waterNukes: boolean;
+  overtimeEnabled: boolean;
+  overtimeStartMinutes: number | null;
+};
+
+const DEFAULT_LIVE_DRAFT: LiveDraft = {
+  donateGold: false,
+  donateTroops: false,
+  infiniteGold: false,
+  infiniteTroops: false,
+  instantBuild: false,
+  disableAlliances: false,
+  waterNukes: false,
+  goldMultiplier: null,
+  maxTimerValue: null,
+  winThresholdTenths: null,
+  overtimeEnabled: false,
+  overtimeStartMinutes: null,
+  disabledUnits: [],
+  customAllianceDuration: null,
 };
 
 const DEFAULT_DRAFT: ConfigDraft = {
@@ -133,10 +196,27 @@ export class RowanAdminPanel extends LitElement {
   @state() private selectedId = "";
   @state() private roster: RosterPlayer[] = [];
   @state() private liveStats: unknown = null;
-  @state() private tab: "overview" | "lobby" | "game" = "overview";
-  @state() private username = "rowkav";
-  @state() private password = "";
+  @state() private tab: "profiles" | "overview" | "lobby" | "game" = "profiles";
+  @state() private profileQuery = "";
+  @state() private profiles: LocalProfile[] = [];
+  @state() private selectedProfile: LocalProfile | null = null;
+  @state() private profilesLoading = false;
+  @state() private entitlementDraft = {
+    xpMultiplier: 1,
+    premium: false,
+    allCosmetics: false,
+    canCreatePublicLobbies: false,
+  };
+  @state() private grantXpAmount = 0;
+  @state() private grantSoftAmount = 0;
+  @state() private grantHardAmount = 0;
+  @state() private unlockId = "";
+  @state() private catalog: CatalogItem[] = [];
+  @state() private catalogQuery = "";
   @state() private draft: ConfigDraft = { ...DEFAULT_DRAFT };
+  @state() private liveDraft: LiveDraft = { ...DEFAULT_LIVE_DRAFT };
+  @state() private createGameType: GameType.Private | GameType.Public =
+    GameType.Private;
   @state() private listed = false;
   @state() private featured = false;
   @state() private label = "";
@@ -280,8 +360,7 @@ export class RowanAdminPanel extends LitElement {
       min-width: 135px;
     }
     .row input:not([type="checkbox"]),
-    .row select,
-    .login input {
+    .row select {
       min-height: 36px;
       width: min(100%, 260px);
       border: 1px solid #527488;
@@ -374,6 +453,44 @@ export class RowanAdminPanel extends LitElement {
     .players td:last-child {
       text-align: right;
     }
+    .scroll-table {
+      overflow-x: auto;
+    }
+    .account {
+      width: 100%;
+      text-align: left;
+      border: 1px solid #33576c;
+      border-radius: 9px;
+      padding: 10px;
+      margin-bottom: 7px;
+      color: #e8f4fa;
+      background: #0c2232;
+    }
+    .account.active {
+      border-color: #55d5ec;
+      background: #164257;
+    }
+    .account small {
+      display: block;
+      color: #9cbccb;
+      margin-top: 3px;
+    }
+    .profile-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 8px;
+    }
+    .profile-stats span {
+      border: 1px solid #315468;
+      border-radius: 8px;
+      padding: 9px;
+      background: #0b1e2b;
+    }
+    .profile-stats strong {
+      display: block;
+      color: #9cdbec;
+      font-size: 17px;
+    }
     pre {
       white-space: pre-wrap;
       overflow-wrap: anywhere;
@@ -394,18 +511,6 @@ export class RowanAdminPanel extends LitElement {
       cursor: pointer;
       color: #9cdbec;
       font-weight: 600;
-    }
-    .login {
-      max-width: 380px;
-      margin: 5vh auto;
-    }
-    .login input {
-      display: block;
-      width: 100%;
-      margin: 7px 0 14px;
-    }
-    .login label {
-      display: block;
     }
     @media (max-width: 750px) {
       .panel {
@@ -432,18 +537,23 @@ export class RowanAdminPanel extends LitElement {
     window.addEventListener("keydown", this.onKeyDown);
     window.addEventListener("popstate", this.onLocationChanged);
     window.addEventListener("open-rowan-admin", this.onOpenAdmin);
+    window.addEventListener("focus", this.onFocus);
+    document.addEventListener("session-cleared", this.onSessionCleared);
     document.addEventListener(
       "join-lobby",
       this.onLobbyJoined as EventListener,
     );
-    void this.checkSession();
     this.selectedId = this.gameIdFromLocation() ?? "";
-    this.open =
+    const requestedOpen =
       new URL(window.location.href).searchParams.has("rowan-admin") ||
       sessionStorage.getItem("rowan-admin-open") === "1";
     sessionStorage.removeItem("rowan-admin-open");
+    void this.checkSession().then((allowed) => {
+      if (allowed && requestedOpen) void this.opened();
+    });
     this.refreshTimer = window.setInterval(() => {
-      if (this.open && this.session.authenticated) void this.loadGames(false);
+      if (this.open && this.session.authenticated && this.tab !== "profiles")
+        void this.loadGames(false);
     }, 10_000);
   }
 
@@ -451,6 +561,8 @@ export class RowanAdminPanel extends LitElement {
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("popstate", this.onLocationChanged);
     window.removeEventListener("open-rowan-admin", this.onOpenAdmin);
+    window.removeEventListener("focus", this.onFocus);
+    document.removeEventListener("session-cleared", this.onSessionCleared);
     document.removeEventListener(
       "join-lobby",
       this.onLobbyJoined as EventListener,
@@ -460,15 +572,29 @@ export class RowanAdminPanel extends LitElement {
   }
 
   private onKeyDown = (event: KeyboardEvent) => {
-    if (event.code !== "F8" || event.repeat || isEditableTarget(event)) return;
+    if (
+      !this.session.authenticated ||
+      event.code !== "F8" ||
+      event.repeat ||
+      isEditableTarget(event)
+    )
+      return;
     event.preventDefault();
-    this.open = !this.open;
-    if (this.open) void this.opened();
+    if (this.open) this.open = false;
+    else void this.opened();
   };
 
   private onOpenAdmin = () => {
-    this.open = true;
     void this.opened();
+  };
+
+  private onFocus = () => {
+    void this.checkSession();
+  };
+
+  private onSessionCleared = () => {
+    this.session = { authenticated: false };
+    this.open = false;
   };
 
   private onLocationChanged = () => {
@@ -506,47 +632,30 @@ export class RowanAdminPanel extends LitElement {
     return data;
   }
 
-  private async checkSession() {
+  private async checkSession(): Promise<boolean> {
     try {
       this.session = await this.request<AdminSession>("/session");
-      if (this.session.authenticated && this.open) await this.loadGames();
+      if (!this.session.authenticated) {
+        this.open = false;
+        this.games = [];
+      }
+      return this.session.authenticated;
     } catch {
       this.session = { authenticated: false };
+      this.open = false;
       this.error = "Admin service is unavailable.";
+      return false;
     }
   }
 
   private async opened() {
     this.error = "";
-    await this.checkSession();
-    if (this.session.authenticated) await this.loadGames();
-  }
-
-  private async login(event: Event) {
-    event.preventDefault();
-    this.busy = true;
-    this.error = "";
-    try {
-      this.session = await this.request<AdminSession>("/login", {
-        method: "POST",
-        body: JSON.stringify({
-          username: this.username,
-          password: this.password,
-        }),
-      });
-      this.password = "";
-      // A fresh page takes the upgraded root JWT before it opens any game
-      // socket. It also makes the requested play name visible in the game's
-      // existing name input instead of leaving a guest name in component state.
-      localStorage.setItem("username", "rowkav");
-      localStorage.setItem("usernameIsGenerated", "false");
-      sessionStorage.setItem("rowan-admin-open", "1");
-      window.location.reload();
-    } catch (error) {
-      this.error = error instanceof Error ? error.message : "Sign in failed";
-    } finally {
-      this.busy = false;
-      this.password = "";
+    if (!(await this.checkSession())) return;
+    this.open = true;
+    if (this.tab === "profiles") {
+      await Promise.all([this.loadProfiles(), this.loadCatalog()]);
+    } else {
+      await this.loadGames();
     }
   }
 
@@ -579,10 +688,117 @@ export class RowanAdminPanel extends LitElement {
     }
   }
 
+  private async loadProfiles(query = this.profileQuery) {
+    if (!this.session.authenticated) return;
+    this.profilesLoading = true;
+    this.error = "";
+    try {
+      const result = await this.request<{ players: LocalProfile[] }>(
+        `/players?q=${encodeURIComponent(query.trim())}`,
+      );
+      this.profiles = result.players ?? [];
+    } catch (error) {
+      this.error =
+        error instanceof Error ? error.message : "Could not load accounts";
+    } finally {
+      this.profilesLoading = false;
+    }
+  }
+
+  private async loadCatalog() {
+    try {
+      const result = await this.request<{ items: CatalogItem[] }>("/catalog");
+      this.catalog = result.items ?? [];
+    } catch {
+      // Catalog availability must not block account and entitlement controls.
+      this.catalog = [];
+    }
+  }
+
+  private async selectProfile(publicId: string) {
+    this.error = "";
+    try {
+      const result = await this.request<{ player: LocalProfile }>(
+        `/player/${encodeURIComponent(publicId)}`,
+      );
+      const player = result.player;
+      this.selectedProfile = player;
+      this.entitlementDraft = {
+        xpMultiplier: player.xpMultiplier ?? 1,
+        premium: player.premium === true,
+        allCosmetics: player.allCosmetics === true,
+        canCreatePublicLobbies: player.canCreatePublicLobbies === true,
+      };
+      this.grantXpAmount = 0;
+      this.grantSoftAmount = 0;
+      this.grantHardAmount = 0;
+      this.unlockId = "";
+    } catch (error) {
+      this.error =
+        error instanceof Error ? error.message : "Could not load account";
+    }
+  }
+
+  private async patchProfile(
+    changes: Record<string, unknown>,
+    success: string,
+  ) {
+    if (!this.selectedProfile) return;
+    const id = this.selectedProfile.publicId;
+    await this.act(async () => {
+      const result = await this.request<{ player: LocalProfile }>(
+        `/player/${encodeURIComponent(id)}`,
+        { method: "PATCH", body: JSON.stringify(changes) },
+      );
+      this.selectedProfile = result.player;
+      this.profiles = this.profiles.map((player) =>
+        player.publicId === id ? result.player : player,
+      );
+      this.entitlementDraft = {
+        xpMultiplier: result.player.xpMultiplier ?? 1,
+        premium: result.player.premium === true,
+        allCosmetics: result.player.allCosmetics === true,
+        canCreatePublicLobbies: result.player.canCreatePublicLobbies === true,
+      };
+    }, success);
+  }
+
+  private saveEntitlements() {
+    return this.patchProfile(
+      this.entitlementDraft,
+      "Account entitlements saved.",
+    );
+  }
+
+  private grantXp() {
+    if (this.grantXpAmount <= 0) return;
+    return this.patchProfile({ grantXp: this.grantXpAmount }, "XP granted.");
+  }
+
+  private grantCurrency(kind: "soft" | "hard") {
+    const amount =
+      kind === "soft" ? this.grantSoftAmount : this.grantHardAmount;
+    if (amount <= 0) return;
+    return this.patchProfile(
+      kind === "soft" ? { grantSoft: amount } : { grantHard: amount },
+      `${kind === "soft" ? "Soft" : "Hard"} currency granted.`,
+    );
+  }
+
+  private grantUnlock(id: string) {
+    if (!id.trim()) return;
+    return this.patchProfile({ addUnlocks: [id.trim()] }, "Unlock granted.");
+  }
+
+  private removeUnlock(id: string) {
+    return this.patchProfile({ removeUnlocks: [id] }, "Unlock removed.");
+  }
+
   private async loadGames(showBusy = true) {
     if (!this.session.authenticated) return;
     if (showBusy) this.loading = true;
     try {
+      const previousSelection = this.selectedId;
       const result = await this.request<{ games: AdminGame[] }>("/games");
       this.games = result.games ?? [];
       if (
@@ -591,6 +807,13 @@ export class RowanAdminPanel extends LitElement {
       ) {
         this.selectedId =
           this.gameIdFromLocation() ?? this.games[0]?.gameID ?? "";
+      }
+      if (this.selectedId && this.selectedId !== previousSelection) {
+        const config = this.selectedGame()?.gameConfig;
+        if (config) {
+          this.fillDraft(config);
+          this.fillLiveDraft(config);
+        }
       }
       if (this.selectedId && this.tab === "game") await this.loadGameDetails();
     } catch (error) {
@@ -616,7 +839,15 @@ export class RowanAdminPanel extends LitElement {
     this.selectedId = id;
     if (this.tab === "game") void this.loadGameDetails();
     const game = this.games.find((g) => g.gameID === id);
-    if (game?.gameConfig) this.fillDraft(game.gameConfig);
+    if (game?.gameConfig) {
+      this.fillDraft(game.gameConfig);
+      this.fillLiveDraft(game.gameConfig);
+    }
+    if (game?.gameConfig?.gameType === GameType.Public) {
+      this.createGameType = GameType.Public;
+    } else {
+      this.createGameType = GameType.Private;
+    }
     this.listed = game?.listed === true;
     this.featured = game?.featured === true;
     this.label = game?.label ?? "";
@@ -641,6 +872,32 @@ export class RowanAdminPanel extends LitElement {
       hostCheatGoldMultiplier: config.hostCheats?.goldMultiplier ?? null,
       hostCheatStartingGold: config.hostCheats?.startingGold ?? null,
     };
+  }
+
+  private fillLiveDraft(config: Partial<GameConfig>) {
+    this.liveDraft = {
+      donateGold: config.donateGold ?? false,
+      donateTroops: config.donateTroops ?? false,
+      infiniteGold: config.infiniteGold ?? false,
+      infiniteTroops: config.infiniteTroops ?? false,
+      instantBuild: config.instantBuild ?? false,
+      disableAlliances: config.disableAlliances ?? false,
+      waterNukes: config.waterNukes ?? false,
+      goldMultiplier: config.goldMultiplier ?? null,
+      maxTimerValue: config.maxTimerValue ?? null,
+      winThresholdTenths: config.winThresholdTenths ?? null,
+      overtimeEnabled: config.overtime?.enabled ?? false,
+      overtimeStartMinutes: config.overtime?.startMinutes ?? null,
+      disabledUnits: config.disabledUnits ?? [],
+      customAllianceDuration: config.customAllianceDuration ?? null,
+    };
+  }
+
+  private updateLiveDraft<K extends keyof LiveDraft>(
+    key: K,
+    value: LiveDraft[K],
+  ) {
+    this.liveDraft = { ...this.liveDraft, [key]: value };
   }
 
   private updateDraft<K extends keyof ConfigDraft>(
@@ -730,31 +987,45 @@ export class RowanAdminPanel extends LitElement {
 
   private async createGame() {
     if (!this.syncNumericDraftFromDom()) return;
-    await this.act(async () => {
-      const result = await this.request<AdminGame>("/create_game", {
-        method: "POST",
-        body: JSON.stringify({
-          ...this.configBody(false),
-          listed: this.listed,
-          featured: this.listed && this.featured,
-          label:
-            this.listed && this.featured ? this.label || undefined : undefined,
-          accent: this.listed && this.featured ? this.accent : undefined,
-        }),
-      });
-      if (
-        result.gameConfig?.bots !== this.draft.bots ||
-        (this.draft.gameMode === GameMode.FFA &&
-          result.gameConfig?.maxPlayers !== this.draft.maxPlayers)
-      ) {
-        throw new Error(
-          "Lobby was created, but its bot or player limit did not match the form.",
-        );
-      }
-      this.selectedId = result.gameID;
-      await this.loadGames();
-      this.tab = "game";
-    }, "Lobby created. Share its link with friends.");
+    if (this.createGameType === GameType.Public && this.hasHostPerks()) {
+      this.error = "Remove private host perks before creating a public game.";
+      return;
+    }
+    await this.act(
+      async () => {
+        const result = await this.request<AdminGame>("/create_game", {
+          method: "POST",
+          body: JSON.stringify({
+            ...this.configBody(false),
+            gameType: this.createGameType,
+            ...(this.createGameType === GameType.Private
+              ? {
+                  listed: this.listed,
+                  featured: this.listed && this.featured,
+                  ...(this.listed && this.featured
+                    ? { label: this.label || undefined, accent: this.accent }
+                    : {}),
+                }
+              : {}),
+          }),
+        });
+        if (
+          result.gameConfig?.bots !== this.draft.bots ||
+          (this.draft.gameMode === GameMode.FFA &&
+            result.gameConfig?.maxPlayers !== this.draft.maxPlayers)
+        ) {
+          throw new Error(
+            "Lobby was created, but its bot or player limit did not match the form.",
+          );
+        }
+        this.selectedId = result.gameID;
+        await this.loadGames();
+        this.tab = "game";
+      },
+      this.createGameType === GameType.Public
+        ? "Public game created and visible in the game feed."
+        : "Lobby created. Share its link with friends.",
+    );
   }
 
   private async updateGame() {
@@ -762,11 +1033,19 @@ export class RowanAdminPanel extends LitElement {
     const game = this.selectedGame();
     if (!game) return;
     if (!this.syncNumericDraftFromDom()) return;
+    if (game.gameConfig?.gameType === GameType.Public && this.hasHostPerks()) {
+      this.error = "Private host perks cannot be applied to a public game.";
+      return;
+    }
     await this.act(async () => {
       const id = encodeURIComponent(this.selectedId);
       // Delist before applying a change that might enable private host perks;
       // list after applying a change that removes them.
-      if (game.listed && !this.listed) {
+      if (
+        game.gameConfig?.gameType !== GameType.Public &&
+        game.listed &&
+        !this.listed
+      ) {
         await this.request(`/game/${id}/listing`, {
           method: "POST",
           body: JSON.stringify({ listed: false }),
@@ -776,7 +1055,7 @@ export class RowanAdminPanel extends LitElement {
         method: "POST",
         body: JSON.stringify({
           type: "update_game_config",
-          config: this.configBody(),
+          config: this.configBody(false),
         }),
       });
       if (
@@ -786,14 +1065,67 @@ export class RowanAdminPanel extends LitElement {
       ) {
         throw new Error("The server did not apply the bot or player limit.");
       }
-      if (!game.listed && this.listed) {
+      if (
+        game.gameConfig?.gameType !== GameType.Public &&
+        !game.listed &&
+        this.listed
+      ) {
         await this.request(`/game/${id}/listing`, {
           method: "POST",
           body: JSON.stringify({ listed: true }),
         });
       }
       await this.loadGames();
-    }, "Lobby settings and visibility updated.");
+    }, "Lobby settings saved.");
+  }
+
+  private syncLiveNumericDraftFromDom() {
+    let next = this.liveDraft;
+    for (const input of this.renderRoot.querySelectorAll<HTMLInputElement>(
+      "input[data-admin-live-number]",
+    )) {
+      const key = input.dataset.adminLiveNumber as keyof LiveDraft | undefined;
+      if (!key) continue;
+      next = {
+        ...next,
+        [key]: optionalNumber(
+          input.value,
+          Number(input.min),
+          Number(input.max),
+        ),
+      };
+    }
+    this.liveDraft = next;
+  }
+
+  private async saveLiveRules() {
+    if (this.selectedGame()?.phase !== "ACTIVE") return;
+    this.syncLiveNumericDraftFromDom();
+    const d = this.liveDraft;
+    const config: Partial<GameConfig> = {
+      donateGold: d.donateGold,
+      donateTroops: d.donateTroops,
+      infiniteGold: d.infiniteGold,
+      infiniteTroops: d.infiniteTroops,
+      instantBuild: d.instantBuild,
+      disableAlliances: d.disableAlliances,
+      waterNukes: d.waterNukes,
+      goldMultiplier: d.goldMultiplier,
+      maxTimerValue: d.maxTimerValue,
+      winThresholdTenths: d.winThresholdTenths,
+      overtime: {
+        enabled: d.overtimeEnabled,
+        ...(d.overtimeStartMinutes === null
+          ? {}
+          : { startMinutes: d.overtimeStartMinutes }),
+      },
+      disabledUnits: d.disabledUnits,
+      customAllianceDuration: d.customAllianceDuration,
+    };
+    await this.sendIntent(
+      { type: "admin_live_config", config },
+      "Live rules saved for this match.",
+    );
   }
 
   private async sendIntent(intent: unknown, success: string) {
@@ -875,6 +1207,290 @@ export class RowanAdminPanel extends LitElement {
                     ${game.paused ? html`<span class="badge">Paused</span>` : nothing}
                   </button>`,
               )
+        }
+      </div>
+    </div>`;
+  }
+
+  private renderProfiles() {
+    const player = this.selectedProfile;
+    const matches = this.catalog.filter((item) =>
+      `${item.name} ${item.id} ${item.type}`
+        .toLowerCase()
+        .includes(this.catalogQuery.toLowerCase().trim()),
+    );
+    return html`<div class="cols">
+      <div>
+        <div class="card">
+          <h3>Local accounts</h3>
+          <form
+            class="row"
+            @submit=${(event: Event) => {
+              event.preventDefault();
+              void this.loadProfiles();
+            }}
+          >
+            <input
+              aria-label="Search accounts"
+              placeholder="Search by username"
+              .value=${this.profileQuery}
+              @input=${(event: Event) => (this.profileQuery = (event.target as HTMLInputElement).value)}
+            />
+            <button
+              class="secondary"
+              type="submit"
+              ?disabled=${this.profilesLoading}
+            >
+              Search
+            </button>
+          </form>
+          ${this.profilesLoading ? html`<p>Loading accounts…</p>` : nothing}
+          ${
+            this.profiles.length === 0
+              ? html`<p>No local accounts match this search.</p>`
+              : this.profiles.map(
+                  (account) =>
+                    html` <button
+                      class="account ${player?.publicId === account.publicId ? "active" : ""}"
+                      @click=${() => this.selectProfile(account.publicId)}
+                    >
+                      <strong>${account.username}</strong>
+                      ${account.premium ? html`<span class="badge">Premium</span>` : nothing}
+                      ${account.role === "root" || account.role === "admin" ? html`<span class="badge">Admin</span>` : nothing}
+                      <small
+                        >Level ${account.level ?? 1} · ${account.games ?? 0}
+                        games · ${account.totalXp ?? 0} XP</small
+                      >
+                    </button>`,
+                )
+          }
+        </div>
+      </div>
+      <div>
+        ${
+          player
+            ? html`
+                <div class="card">
+                  <h3>${player.username}</h3>
+                  <p class="muted">
+                    ${player.publicId} · ${player.role} · Joined
+                    ${player.createdAt ? new Date(player.createdAt).toLocaleDateString() : "unknown"}
+                  </p>
+                  <div class="profile-stats">
+                    <span><strong>${player.level ?? 1}</strong>Level</span>
+                    <span><strong>${player.totalXp ?? 0}</strong>Total XP</span>
+                    <span><strong>${player.games ?? 0}</strong>Games</span>
+                    <span><strong>${player.wins ?? 0}</strong>Wins</span>
+                    <span
+                      ><strong>${player.softCurrency ?? 0}</strong>Soft
+                      currency</span
+                    >
+                    <span
+                      ><strong>${player.hardCurrency ?? 0}</strong>Hard
+                      currency</span
+                    >
+                  </div>
+                </div>
+                <div class="card">
+                  <h3>Entitlements</h3>
+                  <p>
+                    Grants apply to this account. Other players keep the normal
+                    shop prices.
+                  </p>
+                  <div class="row">
+                    <label>XP multiplier</label
+                    ><input
+                      type="number"
+                      min="0"
+                      max="10"
+                      step="0.1"
+                      .value=${String(this.entitlementDraft.xpMultiplier)}
+                      @input=${(event: Event) => {
+                        const value = (event.target as HTMLInputElement).value;
+                        if (value !== "")
+                          this.entitlementDraft = {
+                            ...this.entitlementDraft,
+                            xpMultiplier: numberValue(value, 1, 0, 10),
+                          };
+                      }}
+                    />
+                  </div>
+                  <div class="checks">
+                    <label class="check"
+                      ><input
+                        type="checkbox"
+                        .checked=${this.entitlementDraft.premium}
+                        @change=${(event: Event) => (this.entitlementDraft = { ...this.entitlementDraft, premium: (event.target as HTMLInputElement).checked })}
+                      />Premium</label
+                    >
+                    <label class="check"
+                      ><input
+                        type="checkbox"
+                        .checked=${this.entitlementDraft.allCosmetics}
+                        @change=${(event: Event) => (this.entitlementDraft = { ...this.entitlementDraft, allCosmetics: (event.target as HTMLInputElement).checked })}
+                      />All cosmetics</label
+                    >
+                    <label class="check"
+                      ><input
+                        type="checkbox"
+                        .checked=${this.entitlementDraft.canCreatePublicLobbies}
+                        @change=${(event: Event) => (this.entitlementDraft = { ...this.entitlementDraft, canCreatePublicLobbies: (event.target as HTMLInputElement).checked })}
+                      />Can create public lobbies</label
+                    >
+                  </div>
+                  <button
+                    class="primary"
+                    ?disabled=${this.busy}
+                    @click=${this.saveEntitlements}
+                  >
+                    Save entitlements
+                  </button>
+                </div>
+                <div class="card">
+                  <h3>Grant progress or currency</h3>
+                  <div class="row">
+                    <label>XP</label
+                    ><input
+                      type="number"
+                      min="0"
+                      max="1000000"
+                      step="1"
+                      .value=${String(this.grantXpAmount)}
+                      @input=${(event: Event) => (this.grantXpAmount = numberValue((event.target as HTMLInputElement).value, 0, 0, 1000000))}
+                    />
+                    <button
+                      class="secondary"
+                      ?disabled=${this.busy || this.grantXpAmount <= 0}
+                      @click=${this.grantXp}
+                    >
+                      Grant XP
+                    </button>
+                  </div>
+                  <div class="row">
+                    <label>Soft currency</label
+                    ><input
+                      type="number"
+                      min="0"
+                      step="1"
+                      .value=${String(this.grantSoftAmount)}
+                      @input=${(event: Event) => (this.grantSoftAmount = Math.max(0, Math.floor(Number((event.target as HTMLInputElement).value) || 0)))}
+                    />
+                    <button
+                      class="secondary"
+                      ?disabled=${this.busy || this.grantSoftAmount <= 0}
+                      @click=${() => this.grantCurrency("soft")}
+                    >
+                      Grant
+                    </button>
+                  </div>
+                  <div class="row">
+                    <label>Hard currency</label
+                    ><input
+                      type="number"
+                      min="0"
+                      step="1"
+                      .value=${String(this.grantHardAmount)}
+                      @input=${(event: Event) => (this.grantHardAmount = Math.max(0, Math.floor(Number((event.target as HTMLInputElement).value) || 0)))}
+                    />
+                    <button
+                      class="secondary"
+                      ?disabled=${this.busy || this.grantHardAmount <= 0}
+                      @click=${() => this.grantCurrency("hard")}
+                    >
+                      Grant
+                    </button>
+                  </div>
+                </div>
+                <div class="card">
+                  <h3>Cosmetic unlocks</h3>
+                  <p>
+                    ${player.ownedCosmetics?.length ?? 0} individually granted ·
+                    ${player.allCosmetics ? "All cosmetics enabled" : "Normal shop ownership"}
+                  </p>
+                  <div class="row">
+                    <input
+                      aria-label="Cosmetic item ID"
+                      placeholder="Exact item ID"
+                      .value=${this.unlockId}
+                      @input=${(event: Event) => (this.unlockId = (event.target as HTMLInputElement).value)}
+                    />
+                    <button
+                      class="secondary"
+                      ?disabled=${this.busy || !this.unlockId.trim()}
+                      @click=${() => this.grantUnlock(this.unlockId)}
+                    >
+                      Grant ID
+                    </button>
+                  </div>
+                  <div class="row">
+                    <input
+                      aria-label="Search cosmetics"
+                      placeholder="Search catalog"
+                      .value=${this.catalogQuery}
+                      @input=${(event: Event) => (this.catalogQuery = (event.target as HTMLInputElement).value)}
+                    />
+                  </div>
+                  ${
+                    this.catalog.length === 0
+                      ? html`<p>
+                          Catalog is unavailable; grant by exact item ID above.
+                        </p>`
+                      : html` <div class="scroll-table">
+                            <table class="players">
+                              <thead>
+                                <tr>
+                                  <th>Item</th>
+                                  <th>Normal price</th>
+                                  <th>Grant</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                ${matches.slice(0, 100).map((item) => {
+                                  const owned =
+                                    player.ownedCosmetics?.includes(item.id) ===
+                                    true;
+                                  const prices = [
+                                    item.priceSoft !== undefined
+                                      ? `${item.priceSoft} soft`
+                                      : "",
+                                    item.priceHard !== undefined
+                                      ? `${item.priceHard} hard`
+                                      : "",
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" / ");
+                                  return html`<tr>
+                                    <td>
+                                      <strong>${item.name}</strong><br /><small
+                                        >${item.type} · ${item.id}</small
+                                      >
+                                    </td>
+                                    <td>${prices || "Not sold"}</td>
+                                    <td>
+                                      <button
+                                        class="secondary"
+                                        ?disabled=${this.busy || (player.allCosmetics && !owned)}
+                                        @click=${() => (owned ? this.removeUnlock(item.id) : this.grantUnlock(item.id))}
+                                      >
+                                        ${owned ? "Revoke grant" : player.allCosmetics ? "Included" : "Grant"}
+                                      </button>
+                                    </td>
+                                  </tr>`;
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                          ${matches.length > 100 ? html`<p>Showing the first 100 matches. Narrow the search to see more.</p>` : nothing}`
+                  }
+                </div>
+              `
+            : html`<div class="card">
+                <h3>Choose an account</h3>
+                <p>
+                  Select a local player to inspect their progress and manage
+                  entitlements.
+                </p>
+              </div>`
         }
       </div>
     </div>`;
@@ -1136,30 +1752,50 @@ export class RowanAdminPanel extends LitElement {
       <div>
         ${this.renderConfig()}
         <div class="card">
-          <h3>Create lobby</h3>
-          <div class="checks">
-            <label class="check"
-              ><input
-                type="checkbox"
-                .checked=${this.listed}
-                ?disabled=${this.hasHostPerks()}
-                @change=${(e: Event) => {
-                  this.listed = (e.target as HTMLInputElement).checked;
-                  if (!this.listed) this.featured = false;
-                }}
-              />List publicly</label
-            >
-            <label class="check"
-              ><input
-                type="checkbox"
-                .checked=${this.featured}
-                ?disabled=${!this.listed}
-                @change=${(e: Event) => (this.featured = (e.target as HTMLInputElement).checked)}
-              />Feature lobby</label
-            >
-          </div>
+          <h3>Create game</h3>
+          ${this.renderSelect(
+            "Visibility",
+            this.createGameType,
+            [GameType.Private, GameType.Public],
+            (value) => {
+              this.createGameType = value as GameType.Private | GameType.Public;
+              if (value === GameType.Public) this.featured = false;
+            },
+          )}
+          <p>
+            ${
+              this.createGameType === GameType.Public
+                ? "Public games appear in the normal game feed."
+                : "Private games use an invite link. You can also list a private lobby for friends to find."
+            }
+          </p>
           ${
-            this.featured
+            this.createGameType === GameType.Private
+              ? html`<div class="checks">
+                  <label class="check"
+                    ><input
+                      type="checkbox"
+                      .checked=${this.listed}
+                      ?disabled=${this.hasHostPerks()}
+                      @change=${(e: Event) => {
+                        this.listed = (e.target as HTMLInputElement).checked;
+                        if (!this.listed) this.featured = false;
+                      }}
+                    />List publicly</label
+                  >
+                  <label class="check"
+                    ><input
+                      type="checkbox"
+                      .checked=${this.featured}
+                      ?disabled=${!this.listed}
+                      @change=${(e: Event) => (this.featured = (e.target as HTMLInputElement).checked)}
+                    />Feature lobby</label
+                  >
+                </div>`
+              : nothing
+          }
+          ${
+            this.createGameType === GameType.Private && this.featured
               ? html`
                   <div class="row">
                     <label>Lobby label</label
@@ -1176,10 +1812,10 @@ export class RowanAdminPanel extends LitElement {
           <div class="row">
             <button
               class="primary"
-              ?disabled=${this.busy || (this.listed && this.hasHostPerks())}
+              ?disabled=${this.busy || ((this.createGameType === GameType.Public || this.listed) && this.hasHostPerks())}
               @click=${this.createGame}
             >
-              Create lobby
+              ${this.createGameType === GameType.Public ? "Create public game" : "Create lobby"}
             </button>
           </div>
         </div>
@@ -1190,12 +1826,14 @@ export class RowanAdminPanel extends LitElement {
               ? html`
                   <p>
                     ${this.selectedId} ·
-                    ${this.selectedGame()?.phase ?? "Lobby"}
+                    ${this.selectedGame()?.phase ?? "Lobby"} ·
+                    ${this.selectedGame()?.gameConfig?.gameType ?? "Private"}
                   </p>
+                  ${this.selectedGame()?.gameConfig?.gameType === GameType.Public ? html`<p>Public game settings are editable until the match starts. Visibility is set by the game type.</p>` : nothing}
                   <div class="row">
                     <button
                       class="primary"
-                      ?disabled=${this.busy || this.selectedGame()?.phase !== "LOBBY"}
+                      ?disabled=${this.busy || this.selectedGame()?.phase !== "LOBBY" || (this.selectedGame()?.gameConfig?.gameType === GameType.Public && this.hasHostPerks())}
                       @click=${this.updateGame}
                     >
                       Apply settings
@@ -1224,6 +1862,107 @@ export class RowanAdminPanel extends LitElement {
 
   private selectedGame(): AdminGame | undefined {
     return this.games.find((game) => game.gameID === this.selectedId);
+  }
+
+  private renderLiveCheck(label: string, key: keyof LiveDraft) {
+    return html`<label class="check"
+      ><input
+        type="checkbox"
+        .checked=${Boolean(this.liveDraft[key])}
+        @change=${(event: Event) => this.updateLiveDraft(key, (event.target as HTMLInputElement).checked as never)}
+      />${label}</label
+    >`;
+  }
+
+  private renderLiveNumber(
+    label: string,
+    key: keyof LiveDraft,
+    min: number,
+    max: number,
+    step = 1,
+  ) {
+    const value = this.liveDraft[key];
+    return html`<div class="row">
+      <label>${label}</label
+      ><input
+        type="number"
+        data-admin-live-number=${key}
+        min=${min}
+        max=${max}
+        step=${step}
+        placeholder="Default"
+        .value=${value === null ? "" : String(value)}
+        @change=${(event: Event) => this.updateLiveDraft(key, optionalNumber((event.target as HTMLInputElement).value, min, max) as never)}
+      />
+    </div>`;
+  }
+
+  private renderLiveRules() {
+    return html`<div class="card">
+      <h3>Live match rules</h3>
+      <p>
+        Changes take effect during the match. Map, teams, bots, player limit,
+        starting gold, and difficulty can only be changed in the lobby.
+      </p>
+      <div class="checks">
+        ${this.renderLiveCheck("Donate gold", "donateGold")}
+        ${this.renderLiveCheck("Donate troops", "donateTroops")}
+        ${this.renderLiveCheck("Infinite gold", "infiniteGold")}
+        ${this.renderLiveCheck("Infinite troops", "infiniteTroops")}
+        ${this.renderLiveCheck("Instant build", "instantBuild")}
+        ${this.renderLiveCheck("Disable alliances", "disableAlliances")}
+        ${this.renderLiveCheck("Water nukes", "waterNukes")}
+        ${this.renderLiveCheck("Overtime", "overtimeEnabled")}
+      </div>
+      ${this.renderLiveNumber("Gold multiplier", "goldMultiplier", 0.1, 1000, 0.1)}
+      ${this.renderLiveNumber("Game timer (min)", "maxTimerValue", 1, 120)}
+      ${this.renderLiveNumber("Win threshold (0.1%)", "winThresholdTenths", 100, 999)}
+      ${this.renderLiveNumber("Alliance duration (min)", "customAllianceDuration", 0, 15)}
+      ${
+        this.liveDraft.overtimeEnabled
+          ? this.renderLiveNumber(
+              "Overtime starts (min)",
+              "overtimeStartMinutes",
+              1,
+              120,
+            )
+          : nothing
+      }
+      <details>
+        <summary>Disabled units</summary>
+        <div class="checks">
+          ${Object.values(UnitType).map(
+            (unit) =>
+              html`<label class="check"
+                ><input
+                  type="checkbox"
+                  .checked=${this.liveDraft.disabledUnits.includes(unit)}
+                  @change=${(event: Event) => {
+                    const checked = (event.target as HTMLInputElement).checked;
+                    this.updateLiveDraft(
+                      "disabledUnits",
+                      checked
+                        ? [...this.liveDraft.disabledUnits, unit]
+                        : this.liveDraft.disabledUnits.filter(
+                            (item) => item !== unit,
+                          ),
+                    );
+                  }}
+                />${unit}</label
+              >`,
+          )}
+        </div>
+      </details>
+      <div class="row">
+        <button
+          class="primary"
+          ?disabled=${this.busy}
+          @click=${this.saveLiveRules}
+        >
+          Apply live rules
+        </button>
+      </div>
+    </div>`;
   }
 
   private renderGame() {
@@ -1288,6 +2027,7 @@ export class RowanAdminPanel extends LitElement {
                     </button>
                   </div>
                 </div>
+                ${game.phase === "ACTIVE" ? this.renderLiveRules() : nothing}
                 <div class="card">
                   <h3>Players and moderation</h3>
                   ${
@@ -1373,43 +2113,14 @@ ${JSON.stringify(this.liveStats, null, 2)}</pre>`
     </div>`;
   }
 
-  private renderLogin() {
-    return html`<form class="card login" @submit=${this.login}>
-      <h3>Admin sign in</h3>
-      <p>Sign in to manage lobbies and live games.</p>
-      <label
-        >Username<input
-          name="username"
-          autocomplete="username"
-          required
-          .value=${this.username}
-          @input=${(e: Event) => (this.username = (e.target as HTMLInputElement).value)}
-      /></label>
-      <label
-        >Password<input
-          name="password"
-          type="password"
-          autocomplete="current-password"
-          required
-          .value=${this.password}
-          @input=${(e: Event) => (this.password = (e.target as HTMLInputElement).value)}
-      /></label>
-      <button class="primary" type="submit" ?disabled=${this.busy}>
-        ${this.busy ? "Signing in…" : "Sign in"}
-      </button>
-    </form>`;
-  }
-
   render() {
+    if (!this.session.authenticated) return nothing;
     return html`
       ${
         this.session.authenticated && !this.open
           ? html`<button
               class="launcher"
-              @click=${() => {
-                this.open = true;
-                void this.opened();
-              }}
+              @click=${() => void this.opened()}
               title="Show admin panel (F8)"
             >
               Admin · F8
@@ -1431,40 +2142,50 @@ ${JSON.stringify(this.liveStats, null, 2)}</pre>`
                 <header>
                   <div>
                     <h2>OpenFront admin</h2>
-                    <small
-                      >${this.session.authenticated ? `Signed in as ${this.session.username}` : "F8 to show or hide"}</small
-                    >
+                    <small>Signed in as ${this.session.username}</small>
                   </div>
-                  ${
-                    this.session.authenticated
-                      ? html`<nav>
-                          <button
-                            class=${this.tab === "overview" ? "active" : ""}
-                            @click=${() => (this.tab = "overview")}
-                          >
-                            Overview
-                          </button>
-                          <button
-                            class=${this.tab === "lobby" ? "active" : ""}
-                            @click=${() => (this.tab = "lobby")}
-                          >
-                            Lobbies
-                          </button>
-                          <button
-                            class=${this.tab === "game" ? "active" : ""}
-                            @click=${() => {
-                              this.tab = "game";
-                              void this.loadGameDetails();
-                            }}
-                          >
-                            Games
-                          </button>
-                          <button class="secondary" @click=${this.logout}>
-                            Sign out
-                          </button>
-                        </nav>`
-                      : nothing
-                  }
+                  <nav>
+                    <button
+                      class=${this.tab === "profiles" ? "active" : ""}
+                      @click=${() => {
+                        this.tab = "profiles";
+                        void this.loadProfiles();
+                        void this.loadCatalog();
+                      }}
+                    >
+                      Profiles
+                    </button>
+                    <button
+                      class=${this.tab === "overview" ? "active" : ""}
+                      @click=${() => {
+                        this.tab = "overview";
+                        void this.loadGames();
+                      }}
+                    >
+                      Overview
+                    </button>
+                    <button
+                      class=${this.tab === "lobby" ? "active" : ""}
+                      @click=${() => {
+                        this.tab = "lobby";
+                        void this.loadGames();
+                      }}
+                    >
+                      Lobbies
+                    </button>
+                    <button
+                      class=${this.tab === "game" ? "active" : ""}
+                      @click=${() => {
+                        this.tab = "game";
+                        void this.loadGameDetails();
+                      }}
+                    >
+                      Games
+                    </button>
+                    <button class="secondary" @click=${this.logout}>
+                      Sign out
+                    </button>
+                  </nav>
                   <button
                     class="close"
                     aria-label="Close admin panel"
@@ -1477,13 +2198,13 @@ ${JSON.stringify(this.liveStats, null, 2)}</pre>`
                   ${this.error ? html`<div class="status error" role="alert">${this.error}</div>` : nothing}
                   ${this.message ? html`<div class="status" role="status">${this.message}</div>` : nothing}
                   ${
-                    this.session.authenticated
-                      ? this.tab === "overview"
+                    this.tab === "profiles"
+                      ? this.renderProfiles()
+                      : this.tab === "overview"
                         ? this.renderOverview()
                         : this.tab === "lobby"
                           ? this.renderLobby()
                           : this.renderGame()
-                      : this.renderLogin()
                   }
                 </div>
               </section>`

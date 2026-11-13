@@ -383,34 +383,12 @@ export class NavAccountMenu extends LitElement {
       ];
     }
 
-    // This standalone server has a local admin account, not the upstream
-    // account/profile/store API. Keep the account menu focused on controls
-    // that actually exist here.
-    if (
-      ClientEnv.selfHosted() &&
-      this.userMeResponse !== false &&
-      this.userMeResponse.user.local
-    ) {
-      return [
-        {
-          key: "admin-panel",
-          labelKey: "admin-panel",
-          label: "Admin panel",
-          icon: iconGear,
-          onSelect: () => window.dispatchEvent(new Event("open-rowan-admin")),
-        },
-        {
-          key: "log-out",
-          labelKey: "nav_account_menu.log_out",
-          icon: iconLogOut,
-          onSelect: () => void this.handleLogOut(),
-          danger: true,
-        },
-      ];
-    }
-
     const player =
       this.userMeResponse === false ? null : this.userMeResponse.player;
+    const localUser =
+      ClientEnv.selfHosted() && this.userMeResponse !== false
+        ? this.userMeResponse.user.local
+        : undefined;
     // A past_due subscriber still needs the panel: it is where they reach
     // the billing portal to fix the failed payment.
     const subscribed =
@@ -442,10 +420,22 @@ export class NavAccountMenu extends LitElement {
       },
     });
 
+    if (localUser && publicId) {
+      items.push({
+        key: "view-profile",
+        labelKey: "view-profile",
+        label: "View profile",
+        icon: iconUser,
+        onSelect: () => {
+          window.location.hash = `modal=profile&publicID=${encodeURIComponent(publicId)}`;
+        },
+      });
+    }
+
     // Not on portals: the settings ask for the player's email (marketing
     // consent, binding an email), which a portal's players shouldn't be
     // asked for.
-    if (!gamePortal.isOnGamePortal()) {
+    if (!gamePortal.isOnGamePortal() && !ClientEnv.selfHosted()) {
       items.push({
         key: "account-settings",
         labelKey: "nav_account_menu.account_settings",
@@ -454,19 +444,31 @@ export class NavAccountMenu extends LitElement {
       });
     }
 
-    items.push({
-      key: "change-username",
-      labelKey: "nav_account_menu.change_username",
-      icon: iconTag,
-      onSelect: () => this.openModal("change-username"),
-    });
+    if (!ClientEnv.selfHosted()) {
+      items.push({
+        key: "change-username",
+        labelKey: "nav_account_menu.change_username",
+        icon: iconTag,
+        onSelect: () => this.openModal("change-username"),
+      });
+    }
 
-    if (subscribed) {
+    if (subscribed && !ClientEnv.selfHosted()) {
       items.push({
         key: "subscription",
         labelKey: "nav_account_menu.change_subscription",
         icon: iconCard,
         onSelect: () => this.openModal("subscription"),
+      });
+    }
+
+    if (localUser?.isAdmin) {
+      items.push({
+        key: "admin-panel",
+        labelKey: "admin-panel",
+        label: "Admin panel",
+        icon: iconGear,
+        onSelect: () => window.dispatchEvent(new Event("open-rowan-admin")),
       });
     }
 
@@ -489,10 +491,6 @@ export class NavAccountMenu extends LitElement {
   // Portal players sign in through the SDK prompt; everyone else through
   // the account modal's login options.
   private signIn(): void {
-    if (ClientEnv.selfHosted()) {
-      window.dispatchEvent(new Event("open-rowan-admin"));
-      return;
-    }
     if (gamePortal.isOnGamePortal()) {
       void gamePortal.showAuthPrompt();
       return;

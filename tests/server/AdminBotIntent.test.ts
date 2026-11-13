@@ -41,14 +41,15 @@ describe("GameServer.handleIntent (admin bot)", () => {
       expect(game.gameInfo().gameConfig?.bots).toBe(42);
     });
 
-    it("rejects a public game with 403", () => {
+    it("edits a public game before it starts", () => {
       const game = makeGame({ config: { gameType: GameType.Public } });
       expect(
         apply(game, {
           type: "update_game_config",
           config: { bots: 1 },
         } as any).status,
-      ).toBe(403);
+      ).toBe(200);
+      expect(game.gameInfo().gameConfig?.bots).toBe(1);
     });
 
     it("rejects promoting a game to public with 400", () => {
@@ -110,14 +111,17 @@ describe("GameServer.handleIntent (admin bot)", () => {
       expect(spy).toHaveBeenCalledWith("abcdABCD", expect.any(String));
     });
 
-    it("rejects a public game with 403", () => {
+    it("kicks a player in a public game", () => {
       const game = makeGame({ config: { gameType: GameType.Public } });
+      game.joinClient(makeClient({ clientID: "abcdABCD" }));
+      const spy = vi.spyOn(game, "kickClient").mockImplementation(() => {});
       expect(
         apply(game, {
           type: "kick_player",
           targetClientID: "abcdABCD",
         } as any).status,
-      ).toBe(403);
+      ).toBe(200);
+      expect(spy).toHaveBeenCalled();
     });
 
     it("resolves a publicID target to a connected client's clientID", () => {
@@ -210,6 +214,32 @@ describe("GameServer.handleIntent (admin bot)", () => {
       const pause = intents.find((i) => i.type === "toggle_pause");
       expect(pause).toBeDefined();
       expect(pause?.clientID).toBe(ADMIN_BOT_CLIENT_ID);
+    });
+  });
+
+  describe("admin_live_config", () => {
+    it("delivers a live rule update in a turn, including while paused", () => {
+      const game = makeGame({ config: { gameType: GameType.Public } });
+      const player = makeClient({ clientID: cid("p1") });
+      game.joinClient(player);
+      startGame(game);
+      apply(game, { type: "toggle_pause", paused: true });
+      const result = apply(game, {
+        type: "admin_live_config",
+        config: { infiniteGold: true },
+      });
+      expect(result.status).toBe(200);
+      expect(game.isPaused()).toBe(true);
+      expect(game.gameInfo().gameConfig?.infiniteGold).toBe(true);
+      const ctx = createGameWireContext([{ clientID: cid("p1") }]);
+      const intents = mockWsOf(player)
+        .sent(ctx)
+        .flatMap((m) => (m.type === "turn" ? m.turn.intents : []));
+      expect(intents).toContainEqual({
+        type: "admin_live_config",
+        clientID: ADMIN_BOT_CLIENT_ID,
+        config: { infiniteGold: true },
+      });
     });
   });
 

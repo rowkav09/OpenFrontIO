@@ -1,6 +1,7 @@
 import type { Cosmetics, Effect } from "@openfront/shared/CosmeticSchemas";
 import { nothing, type LitElement } from "lit";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ClientEnv } from "../../src/client/ClientEnv";
 import type { CosmeticCard } from "../../src/client/components/CosmeticCard";
 import type { EffectsGrid } from "../../src/client/components/EffectsGrid";
 import type { PurchaseButton } from "../../src/client/components/PurchaseButton";
@@ -357,6 +358,23 @@ describe("StoreModal cosmetic browser", () => {
     store?.remove();
     store = undefined;
     localStorage.clear();
+  });
+
+  it("keeps local-currency cosmetics while hiding cash checkout tabs on self-host", async () => {
+    const selfHosted = vi.spyOn(ClientEnv, "selfHosted").mockReturnValue(true);
+    try {
+      const modal = await openStoreOnCosmetic("patterns");
+      const tabs = (
+        modal as unknown as { modalConfig(): { tabs: { key: string }[] } }
+      )
+        .modalConfig()
+        .tabs.map(({ key }) => key);
+      expect(tabs).toEqual(["cosmetics", "bundles", "effects"]);
+      expect(purchaseButton(modal, red.key).onPurchaseHard).toBeDefined();
+      expect(purchaseButton(modal, red.key).onPurchaseDollar).toBeUndefined();
+    } finally {
+      selfHosted.mockRestore();
+    }
   });
 
   it("shows a running sale: banner, struck list price and discount", async () => {

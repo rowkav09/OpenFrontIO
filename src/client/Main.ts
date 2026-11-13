@@ -1106,6 +1106,16 @@ class Client {
       void onUserMe(false);
     });
 
+    // Local sign-in (including the admin panel's session upgrade) changes the
+    // cookie without navigating. Re-read the account through the same path as
+    // startup so the nav, premium perks and cosmetics all switch identities.
+    document.addEventListener("local-auth-changed", () => {
+      invalidateUserMe();
+      snapshotLapseMarker();
+      const generation = ++authGeneration;
+      void getUserMe().then(applyUserMe(generation));
+    });
+
     // Register before initial auth settles: the status bar may already offer
     // Retry while startup is still waiting for its first session.
     subscribeDesktopSessionRecovery(async () => {

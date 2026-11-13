@@ -45,7 +45,9 @@ export async function archive(gameRecord: GameRecord) {
       });
       return;
     }
-    url = `${ServerEnv.jwtIssuer()}/game/${gameID}`;
+    // Self-hosted accounts and progress live in the local portal. The public
+    // origin serves browser traffic, but cannot ingest game archives.
+    url = `${ServerEnv.accountApiBase()}/game/${gameID}`;
     request = {
       method: "POST",
       body: JSON.stringify(gameRecord, replacer),

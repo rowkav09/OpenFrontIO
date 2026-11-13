@@ -1190,6 +1190,11 @@ export class ClientGameRunner {
             });
             this.turnsSeen++;
           }
+          for (const intent of turn.intents) {
+            if (intent.type === "admin_live_config") {
+              this.gameView.config().applyLiveGameConfigPatch(intent.config);
+            }
+          }
           this.worker.sendTurn(turn);
           this.turnsSeen++;
         }
@@ -1264,6 +1269,11 @@ export class ClientGameRunner {
             `got wrong turn have turns ${this.turnsSeen}, received turn ${message.turn.turnNumber}`,
           );
         } else {
+          for (const intent of message.turn.intents) {
+            if (intent.type === "admin_live_config") {
+              this.gameView.config().applyLiveGameConfigPatch(intent.config);
+            }
+          }
           this.worker.sendTurn(
             // Filter out pause intents in replays
             this.gameView.config().isReplay()

@@ -7,7 +7,7 @@ import {
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
 import { PlayerLike } from "@openfront/engine-api/game/ReadViews";
-import { GameConfig } from "@openfront/engine-api/Schemas";
+import { GameConfig, LiveGameConfigPatch } from "@openfront/engine-api/Schemas";
 import { pow } from "../DetMath";
 import { DoomsdayClockSpeed } from "../game/DoomsdayClock";
 import { assertNever } from "../Util";
@@ -157,6 +157,13 @@ export class Config {
 
   gameConfig(): GameConfig {
     return this._gameConfig;
+  }
+
+  /** Apply an admin rule change carried by a deterministic server turn. */
+  applyLiveGameConfigPatch(patch: LiveGameConfigPatch): void {
+    Object.assign(this._gameConfig, patch);
+    // Unit construction durations depend on instantBuild and are cached.
+    if (patch.instantBuild !== undefined) this.unitInfoCache.clear();
   }
 
   cityTroopIncrease(): number {

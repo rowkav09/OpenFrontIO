@@ -35,11 +35,6 @@ export function authorizeIntent(
   actor: IntentActor,
   game: IntentGameState,
 ): IntentOutcome | null {
-  // The admin bot only manages private games.
-  if (actor.isAdminBot && game.isPublic) {
-    return { status: 403, error: "admin bot cannot act on public games" };
-  }
-
   switch (intent.type) {
     case "mark_disconnected":
       return { status: 400, error: "mark_disconnected is server-internal" };
@@ -70,7 +65,7 @@ export function authorizeIntent(
           error: "only the lobby creator can update game config",
         };
       }
-      if (game.isPublic) {
+      if (game.isPublic && !actor.isAdminBot) {
         return { status: 403, error: "cannot update a public game" };
       }
       if (game.hasStarted) {
@@ -109,11 +104,23 @@ export function authorizeIntent(
       }
       return null;
 
+    case "admin_live_config":
+      if (!actor.isAdminBot) {
+        return {
+          status: 403,
+          error: "only the admin API can change live rules",
+        };
+      }
+      if (!game.hasStarted) {
+        return { status: 409, error: "game not started" };
+      }
+      return null;
+
     case "toggle_game_start_timer":
       if (!actor.isLobbyCreator && !actor.isAdminBot) {
         return { status: 403, error: "only the lobby creator can start" };
       }
-      if (game.isPublic) {
+      if (game.isPublic && !actor.isAdminBot) {
         return { status: 403, error: "cannot start a public game" };
       }
       if (game.hasStarted) {

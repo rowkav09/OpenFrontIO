@@ -73,6 +73,27 @@ const LOGIN_ERROR_KEYS: Record<LoginResult, string> = {
   no_account: "account_modal.login_no_account",
 };
 
+function localAuthErrorMessage(code: unknown): string {
+  switch (code) {
+    case "invalid_username":
+      return "Choose a username using letters, numbers, or underscores.";
+    case "weak_password":
+      return "Choose a stronger password.";
+    case "username_taken":
+      return "That username is already taken.";
+    case "already_signed_in":
+      return "Sign out before creating another account.";
+    case "invalid_credentials":
+      return "Incorrect username or password.";
+    case "too_many_attempts":
+      return "Too many attempts. Please try again later.";
+    case "registration_unavailable":
+      return "Registration is temporarily unavailable.";
+    default:
+      return "Could not sign in. Please try again.";
+  }
+}
+
 // The prestige confirmation and ceremony only ever open for a player at level
 // 100, so they stay out of the startup bundle: fetched as soon as the account
 // says the card will offer Prestige, well before the press. A failed fetch is
@@ -97,6 +118,12 @@ export class AccountModal extends BaseModal {
   protected routerName = "account";
 
   @state() private email: string = "";
+  @state() private localUsername = "";
+  @state() private localPassword = "";
+  @state() private localConfirmPassword = "";
+  @state() private localCreateAccount = false;
+  @state() private localAuthBusy = false;
+  @state() private localAuthError = "";
   @state() private isLoadingUser: boolean = false;
   // Counts openings, to key the profile card's and the Progression tab's
   // once-per-open flourish.
@@ -192,7 +219,7 @@ export class AccountModal extends BaseModal {
   }
 
   protected renderHeaderSlot() {
-    const isLoggedIn = !!this.userMeResponse?.user;
+    const isLoggedIn = this.isLinkedAccount();
     const publicId = this.userMeResponse?.player?.publicId ?? "";
     return modalHeader({
       title: translateText("account_modal.title"),
@@ -246,7 +273,14 @@ export class AccountModal extends BaseModal {
               },
             ]
           : []),
-        { key: "friends", label: translateText("account_modal.tab_friends") },
+        ...(!ClientEnv.selfHosted()
+          ? [
+              {
+                key: "friends",
+                label: translateText("account_modal.tab_friends"),
+              },
+            ]
+          : []),
       ],
     };
   }
@@ -342,6 +376,9 @@ export class AccountModal extends BaseModal {
     if (this.portalUser) {
       return this.renderPortalAccount(this.portalUser);
     }
+    if (ClientEnv.selfHosted() && this.userMeResponse?.user.local) {
+      return this.renderLocalAccount();
+    }
     return html`
       <div class="flex flex-col gap-6">
         ${this.renderProfileCard("compact")}
@@ -369,6 +406,32 @@ export class AccountModal extends BaseModal {
         </div>
         ${this.renderRewardsPanel()} ${this.renderCreatorCodePanel()}
         ${this.renderDesktopLinkGateAction()}
+      </div>
+    `;
+  }
+
+  private renderLocalAccount(): TemplateResult {
+    const local = this.userMeResponse?.user.local;
+    return html`
+      <div class="flex flex-col gap-6">
+        ${this.renderProfileCard("compact")}
+        <div
+          class="bg-white/5 rounded-xl border border-white/10 p-6 text-center"
+        >
+          <div
+            class="text-xs text-white/40 uppercase tracking-widest font-bold mb-3"
+          >
+            ${translateText("account_modal.connected_as")}
+          </div>
+          <div class="text-white text-lg font-medium">${local?.username}</div>
+          ${
+            this.userMeResponse?.player.subscription
+              ? html`<div class="text-sm text-malibu-blue mt-2">Premium</div>`
+              : nothing
+          }
+          <div class="mt-3">${this.renderCurrency()}</div>
+        </div>
+        ${this.renderRewardsPanel()}
       </div>
     `;
   }
@@ -684,7 +747,7 @@ export class AccountModal extends BaseModal {
       .provisional=${view.provisional}
       .ffaRating=${ffaRating}
       .openKey=${`account-${this.openCount}`}
-      prestigeable
+      ?prestigeable=${!ClientEnv.selfHosted()}
       @prestige-request=${this.handlePrestigeRequest}
     ></profile-card>`;
   }
@@ -1012,6 +1075,7 @@ export class AccountModal extends BaseModal {
   }
 
   private renderLoginOptions() {
+    if (ClientEnv.selfHosted()) return this.renderLocalLogin();
     // In the Steam shell both provider buttons open the shell's browser
     // link flow rather than an in-place OAuth redirect (see discordLogin /
     // googleLogin in Auth.ts), and the captions say so. Keyed on the shell
@@ -1153,6 +1217,183 @@ export class AccountModal extends BaseModal {
     `;
   }
 
+  private renderLocalLogin(): TemplateResult {
+    return html`
+      <div class="flex items-center justify-center p-6 min-h-full">
+        <div
+          class="w-full max-w-md bg-white/5 rounded-2xl border border-white/10 p-8"
+        >
+          <div
+            class="flex gap-2 mb-6"
+            role="tablist"
+            aria-label="Account access"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected=${String(!this.localCreateAccount)}
+              class="flex-1 rounded-lg px-3 py-2 text-white ${
+                !this.localCreateAccount ? "bg-malibu-blue/30" : "bg-white/5"
+              }"
+              @click=${() => this.switchLocalAuthMode(false)}
+            >
+              Sign in
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected=${String(this.localCreateAccount)}
+              class="flex-1 rounded-lg px-3 py-2 text-white ${
+                this.localCreateAccount ? "bg-malibu-blue/30" : "bg-white/5"
+              }"
+              @click=${() => this.switchLocalAuthMode(true)}
+            >
+              Create account
+            </button>
+          </div>
+          <form class="space-y-4" @submit=${this.submitLocalAuth}>
+            <label class="block text-sm text-white/70" for="local-username"
+              >Username</label
+            >
+            <input
+              id="local-username"
+              name="username"
+              type="text"
+              autocomplete="username"
+              required
+              .value=${this.localUsername}
+              @input=${(e: Event) =>
+                (this.localUsername = (e.target as HTMLInputElement).value)}
+              class="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white"
+            />
+            <label class="block text-sm text-white/70" for="local-password"
+              >Password</label
+            >
+            <input
+              id="local-password"
+              name="password"
+              type="password"
+              autocomplete=${
+                this.localCreateAccount ? "new-password" : "current-password"
+              }
+              required
+              .value=${this.localPassword}
+              @input=${(e: Event) =>
+                (this.localPassword = (e.target as HTMLInputElement).value)}
+              class="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white"
+            />
+            ${
+              this.localCreateAccount
+                ? html`
+                    <label
+                      class="block text-sm text-white/70"
+                      for="local-confirm-password"
+                      >Confirm password</label
+                    >
+                    <input
+                      id="local-confirm-password"
+                      name="confirm-password"
+                      type="password"
+                      autocomplete="new-password"
+                      required
+                      .value=${this.localConfirmPassword}
+                      @input=${(e: Event) =>
+                        (this.localConfirmPassword = (
+                          e.target as HTMLInputElement
+                        ).value)}
+                      class="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white"
+                    />
+                  `
+                : nothing
+            }
+            ${
+              this.localAuthError
+                ? html`<p class="text-sm text-red-300" role="alert">
+                    ${this.localAuthError}
+                  </p>`
+                : nothing
+            }
+            <button
+              type="submit"
+              ?disabled=${this.localAuthBusy}
+              class="w-full rounded-xl bg-malibu-blue px-4 py-3 font-semibold text-black disabled:opacity-50"
+            >
+              ${
+                this.localAuthBusy
+                  ? "Please wait…"
+                  : this.localCreateAccount
+                    ? "Create account"
+                    : "Sign in"
+              }
+            </button>
+          </form>
+        </div>
+      </div>
+    `;
+  }
+
+  private switchLocalAuthMode(createAccount: boolean): void {
+    this.localCreateAccount = createAccount;
+    this.localPassword = "";
+    this.localConfirmPassword = "";
+    this.localAuthError = "";
+  }
+
+  private submitLocalAuth = async (event: SubmitEvent): Promise<void> => {
+    event.preventDefault();
+    if (this.localAuthBusy) return;
+    if (
+      this.localCreateAccount &&
+      this.localPassword !== this.localConfirmPassword
+    ) {
+      this.localAuthError = "Passwords do not match.";
+      return;
+    }
+    this.localAuthBusy = true;
+    this.localAuthError = "";
+    const createAccount = this.localCreateAccount;
+    try {
+      const response = await fetch(
+        createAccount ? "/auth/register" : "/auth/login",
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username: this.localUsername.trim(),
+            password: this.localPassword,
+          }),
+          signal: AbortSignal.timeout(10_000),
+        },
+      );
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        this.localAuthError = localAuthErrorMessage(body?.error);
+        return;
+      }
+      invalidateUserMe();
+      const auth = await reauthAfterPortalChange();
+      if (auth === false) throw new Error("Session refresh failed");
+      const me = await getUserMe();
+      if (me === false) throw new Error("Account read failed");
+      const previousPublicId = this.userMeResponse?.player?.publicId;
+      this.userMeResponse = me;
+      if (me.player.publicId !== previousPublicId) this.resetPlayerData();
+      this.prefetchPrestigeFlow();
+      this.requestUpdate();
+      this.localPassword = "";
+      this.localConfirmPassword = "";
+      if (me.player.publicId) void this.loadPlayerProfile(me.player.publicId);
+      await this.updateComplete;
+      this.setActiveTab("account");
+    } catch (error) {
+      console.warn("Local account sign-in failed", error);
+      this.localAuthError = "Could not sign in. Please try again.";
+    } finally {
+      this.localAuthBusy = false;
+    }
+  };
+
   private handleEmailInput(e: Event) {
     const target = e.target as HTMLInputElement;
     this.email = target.value;
@@ -1274,6 +1515,9 @@ export class AccountModal extends BaseModal {
   }
 
   protected onClose(): void {
+    this.localPassword = "";
+    this.localConfirmPassword = "";
+    this.localAuthError = "";
     this.dispatchEvent(
       new CustomEvent("close", { bubbles: true, composed: true }),
     );
