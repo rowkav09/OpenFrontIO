@@ -202,7 +202,7 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
     if (!this.adminCsrfToken || !myPlayer) return "";
     const targets = this.game.players().filter((p) => p !== nation && p.isAlive());
     const attackMe = this.nationAttackMeOrders[nation.id()] === myPlayer.id();
-    return html`<div class="flex items-center gap-2 text-xs p-2 border-t border-white/20"
+    return html`<div class="flex flex-wrap items-center gap-2 text-xs p-2 border-t border-white/20"
       @click=${(event: Event) => event.stopPropagation()}>
       <strong>Nation admin</strong>
       <select aria-label="Attack target" class="bg-gray-900 border border-white/30 rounded p-1"
@@ -717,6 +717,7 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
     const keybinds = this.userSettings.keybinds(Platform.isMac);
 
     return html`
+      <div class="flex flex-col">
       <div class="flex items-start gap-1 lg:gap-2 p-1 lg:p-1.5">
         ${
           myPlayer && this.showShortcutButtons()
@@ -852,7 +853,8 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
             ? this.renderActionButtons(player, myPlayer, keybinds)
             : ""
         }
-        ${player.type() === PlayerType.Nation ? this.renderNationAdmin(player, myPlayer) : ""}
+      </div>
+      ${player.type() === PlayerType.Nation ? this.renderNationAdmin(player, myPlayer) : ""}
       </div>
     `;
   }
