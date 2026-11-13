@@ -140,6 +140,7 @@ beforeEach(() => {
 import { RankedType } from "@openfront/engine-api/game/GameTypes";
 import { RankedLeaderboardResponseSchema } from "@openfront/shared/ApiSchemas";
 import "../../src/client/components/baseComponents/Modal";
+import { ClientEnv } from "../../src/client/ClientEnv";
 import type { FfaTierBadge } from "../../src/client/components/ffaRating/FfaTierBadge";
 import { LeaderboardModal } from "../../src/client/LeaderboardModal";
 
@@ -1503,6 +1504,52 @@ describe("LeaderboardModal", () => {
   });
 
   describe("Modal Interaction", () => {
+    it("explains unsupported local ladders without requesting placeholder data", async () => {
+      const selfHosted = vi
+        .spyOn(ClientEnv, "selfHosted")
+        .mockReturnValue(true);
+      try {
+        modal.requestUpdate();
+        await modal.updateComplete;
+        expect(
+          modal
+            .querySelector("[data-selfhost-unsupported] h3")
+            ?.textContent?.replace(/\s+/g, " ")
+            .trim(),
+        ).toBe("Ranked leaderboards are unavailable here");
+        expect(getPlayerList()).toBeNull();
+        (modal as unknown as { onOpen: () => void }).onOpen();
+        await Promise.resolve();
+        expect(global.fetch).not.toHaveBeenCalled();
+
+        (modal as unknown as { activeTab: string }).activeTab = "clans";
+        await modal.updateComplete;
+        expect(
+          modal
+            .querySelector("[data-selfhost-unsupported] h3")
+            ?.textContent?.replace(/\s+/g, " ")
+            .trim(),
+        ).toBe("Clan leaderboards are unavailable here");
+        expect(getClanTable()).toBeNull();
+        (modal as unknown as { onTabEnter: () => void }).onTabEnter();
+        await Promise.resolve();
+        expect(global.fetch).not.toHaveBeenCalled();
+
+        (modal as unknown as { activeTab: string }).activeTab = "tribes";
+        await modal.updateComplete;
+        (modal as unknown as { onTabEnter: () => void }).onTabEnter();
+        await vi.waitFor(() =>
+          expect(global.fetch).toHaveBeenCalledWith(
+            expect.stringContaining("/leaderboard/tribes"),
+            { headers: { Accept: "application/json" } },
+          ),
+        );
+        expect(modal.querySelector("[data-selfhost-unsupported]")).toBeNull();
+      } finally {
+        selfHosted.mockRestore();
+      }
+    });
+
     it("should switch to clans tab and request clan leaderboard data", async () => {
       (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
         ok: true,
