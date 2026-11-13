@@ -332,6 +332,7 @@ export const GameConfigSchema = z.object({
   disabledUnits: z.enum(UnitType).array().optional(),
   playerTeams: TeamCountConfigSchema.optional(),
   goldMultiplier: zb.float({ min: 0.1, max: 1000 }).nullable().optional(),
+  troopRegenMultiplier: zb.float({ min: 0.1, max: 20 }).nullable().optional(),
   startingGold: zb.uint({ max: 1000000000 }).nullable().optional(),
   hostCheats: z
     .object({
@@ -367,6 +368,7 @@ export const LiveGameConfigPatchSchema = GameConfigSchema.pick({
   disableAlliances: true,
   waterNukes: true,
   goldMultiplier: true,
+  troopRegenMultiplier: true,
   maxTimerValue: true,
   winThresholdTenths: true,
   overtime: true,

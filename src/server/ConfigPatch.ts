@@ -43,6 +43,7 @@ const NULLABLE_KEYS = [
   "startDelay",
   "spawnImmunityDuration",
   "goldMultiplier",
+  "troopRegenMultiplier",
   "startingGold",
   "disableAlliances",
   "customAllianceDuration",
