@@ -383,6 +383,9 @@ export class RowanAdminPanel extends LitElement {
       color: #f5fbff;
       background: #0a1b28;
     }
+    input[type="number"] { appearance: textfield; -moz-appearance: textfield; }
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
     input[type="checkbox"] {
       width: 18px;
       height: 18px;
@@ -594,7 +597,7 @@ export class RowanAdminPanel extends LitElement {
   private onKeyDown = (event: KeyboardEvent) => {
     if (
       !this.session.authenticated ||
-      event.code !== "F8" ||
+      event.code !== "Slash" ||
       event.repeat ||
       isEditableTarget(event)
     )
@@ -1088,6 +1091,25 @@ export class RowanAdminPanel extends LitElement {
         ? "Public game created and visible in the game feed."
         : "Lobby created. Share its link with friends.",
     );
+  }
+
+  private async startFreshLobby() {
+    const game = this.selectedGame();
+    if (!game?.gameConfig) return;
+    this.fillDraft(game.gameConfig);
+    const gameType = game.gameConfig.gameType === GameType.Public
+      ? GameType.Public : GameType.Private;
+    await this.act(async () => {
+      const created = await this.request<AdminGame>("/create_game", {
+        method: "POST",
+        body: JSON.stringify({
+          ...this.configBody(false),
+          gameType,
+          ...(gameType === GameType.Private ? { listed: game.listed === true } : {}),
+        }),
+      });
+      window.location.assign(gameLink(created.gameID));
+    }, "Fresh lobby created.");
   }
 
   private async updateGame() {
@@ -1709,7 +1731,7 @@ export class RowanAdminPanel extends LitElement {
         max=${max}
         step=${step}
         .value=${value === null ? "" : String(value)}
-        @input=${(e: Event) => {
+        @change=${(e: Event) => {
           const raw = (e.target as HTMLInputElement).value;
           if (raw !== "")
             this.updateDraft(
@@ -1740,7 +1762,7 @@ export class RowanAdminPanel extends LitElement {
         step=${step}
         placeholder="Default"
         .value=${value === null ? "" : String(value)}
-        @input=${(e: Event) => this.updateDraft(key, optionalNumber((e.target as HTMLInputElement).value, min, max) as never)}
+        @change=${(e: Event) => this.updateDraft(key, optionalNumber((e.target as HTMLInputElement).value, min, max) as never)}
       />
     </div>`;
   }
@@ -2110,6 +2132,12 @@ export class RowanAdminPanel extends LitElement {
                     </button>
                     <button
                       class="secondary"
+                      ?disabled=${this.busy}
+                      @click=${this.startFreshLobby}
+                      title="Create a new waiting lobby with this game's settings"
+                    >Start fresh lobby</button>
+                    <button
+                      class="secondary"
                       @click=${() => this.act(() => this.loadGameDetails(), "Game details refreshed.")}
                     >
                       Refresh details
@@ -2262,9 +2290,9 @@ ${JSON.stringify(this.liveStats, null, 2)}</pre>`
           ? html`<button
               class="launcher"
               @click=${() => void this.opened()}
-              title="Show admin panel (F8)"
+              title="Show admin panel (/)"
             >
-              Admin · F8
+              Admin · /
             </button>`
           : nothing
       }

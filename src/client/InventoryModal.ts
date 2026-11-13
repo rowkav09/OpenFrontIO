@@ -10,6 +10,7 @@ import {
 import { PlayerPattern } from "@openfront/shared/WireSchemas";
 import type { TemplateResult } from "lit";
 import { html, nothing } from "lit";
+import { keyed } from "lit/directives/keyed.js";
 import { customElement, state } from "lit/decorators.js";
 import Countries from "resources/countries.json" with { type: "json" };
 import { getUserMe } from "./Api";
@@ -577,13 +578,12 @@ export class InventoryModal extends BaseModal {
         class="grid grid-cols-2 gap-3 p-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
       >
         ${page.items.map(
-          (resolved) => html`
+          (resolved) => keyed(resolved.key, html`
             <cosmetic-card
               .resolved=${resolved}
               state=${equippedKey === resolved.key ? "equipped" : "idle"}
               .onActivate=${() => this.selectFlag(resolved)}
-            ></cosmetic-card>
-          `,
+            ></cosmetic-card>`),
         )}
         ${page.more}
       </div>
@@ -657,8 +657,7 @@ export class InventoryModal extends BaseModal {
             type="text"
             placeholder=${translateText("cosmetics.search")}
             .value=${this.search}
-            @change=${this.handleSearch}
-            @keyup=${this.handleSearch}
+            @input=${this.handleSearch}
           />
         </div>
       </div>

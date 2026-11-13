@@ -791,7 +791,12 @@ export async function sendMagicLink(email: string): Promise<boolean> {
 
 // WARNING: DO NOT EXPOSE THIS ID
 export async function getPlayToken(): Promise<string> {
-  const result = await userAuth();
+  // The local account cookie can change in another tab while this page keeps
+  // a still-valid guest JWT. Refresh at join so completed matches are linked
+  // to the account actually signed in now, rather than to that old guest.
+  const result = ClientEnv.selfHosted()
+    ? await reauthAfterPortalChange()
+    : await userAuth();
   if (result !== false) return result.jwt;
   return getPersistentIDFromLocalStorage();
 }

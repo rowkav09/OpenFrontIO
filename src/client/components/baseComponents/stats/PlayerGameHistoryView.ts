@@ -365,7 +365,9 @@ export class PlayerGameHistoryView extends LitElement {
           class="bg-white/5 rounded-xl border border-white/10 p-8 text-center"
         >
           <p class="text-white/40 text-sm">
-            ${translateText("clan_modal.history_empty")}
+            ${ClientEnv.selfHosted() && this.typeFilter === "all" && this.modeFilter === "all"
+              ? "Games appear here after a match you spawn in finishes."
+              : translateText("clan_modal.history_empty")}
           </p>
         </div>
       `;
