@@ -1,15 +1,16 @@
 import { RankedType } from "@openfront/engine-api/game/GameTypes";
 import { html } from "lit";
 import { customElement, query, state } from "lit/decorators.js";
-import { BaseModal } from "./components/BaseModal";
+import { ClientEnv } from "./ClientEnv";
 import "./components/leaderboard/LeaderboardClanTable";
-import type { LeaderboardClanTable } from "./components/leaderboard/LeaderboardClanTable";
+import { BaseModal } from "./components/BaseModal";
 import "./components/leaderboard/LeaderboardPlayerList";
+import type { LeaderboardClanTable } from "./components/leaderboard/LeaderboardClanTable";
+import "./components/leaderboard/LeaderboardTribeTable";
 import type {
   LeaderboardPlayerList,
   PlayerLadder,
 } from "./components/leaderboard/LeaderboardPlayerList";
-import "./components/leaderboard/LeaderboardTribeTable";
 import type { LeaderboardTribeTable } from "./components/leaderboard/LeaderboardTribeTable";
 import { modalHeader } from "./components/ui/ModalHeader";
 import { translateText } from "./Utils";
@@ -108,6 +109,11 @@ export class LeaderboardModal extends BaseModal {
     const run = async () => {
       if (token !== this.loadToken) return;
 
+      if (ClientEnv.selfHosted()) {
+        if (active === "tribes") await this.tribeTable?.ensureLoaded();
+        return;
+      }
+
       if (this.rankedTypeFor(active) !== null) {
         await this.playerList?.ensureLoaded();
         if (token !== this.loadToken) return;
@@ -140,7 +146,7 @@ export class LeaderboardModal extends BaseModal {
 
   protected renderHeaderSlot() {
     let dateRange = html``;
-    if (this.clanDateRange) {
+    if (this.clanDateRange && !ClientEnv.selfHosted()) {
       const start = new Date(this.clanDateRange.start).toLocaleDateString();
       const end = new Date(this.clanDateRange.end).toLocaleDateString();
       dateRange = html`<span
@@ -163,8 +169,9 @@ export class LeaderboardModal extends BaseModal {
           </span>
           ${this.activeTab === "clans" ? dateRange : ""}
           ${
-            this.rankedTypeFor(this.activeTab) !== null ||
-            this.activeTab === "tribes"
+            this.activeTab === "tribes" ||
+            (!ClientEnv.selfHosted() &&
+              this.rankedTypeFor(this.activeTab) !== null)
               ? refreshTime
               : ""
           }
@@ -176,6 +183,28 @@ export class LeaderboardModal extends BaseModal {
   }
 
   protected renderBody() {
+    if (ClientEnv.selfHosted()) {
+      if (this.activeTab === "tribes") {
+        return html`<div class="flex-1 min-h-0 h-full">
+          <leaderboard-tribe-table class="h-full"></leaderboard-tribe-table>
+        </div>`;
+      }
+      return html`<div
+        class="flex-1 flex flex-col items-center justify-center gap-4 p-8 text-center text-white"
+        role="status"
+        data-selfhost-unsupported
+      >
+        <h3 class="text-xl font-bold">
+          ${this.activeTab === "clans" ? "Clan" : "Ranked"} leaderboards are
+          unavailable here
+        </h3>
+        <p class="max-w-xl text-white/70">
+          This RowanFront server has no ranked matchmaking or clans. Local Tribe
+          rankings are available in the Tribes tab. Your personal Games and
+          Stats appear in Profile after completed signed-in matches.
+        </p>
+      </div>`;
+    }
     return html`
       <div class="flex-1 min-h-0 h-full">
         <leaderboard-player-list
