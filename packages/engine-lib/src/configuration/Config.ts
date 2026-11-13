@@ -174,6 +174,12 @@ export class Config {
     else this.playerTroopRegenBonuses.set(playerId, bonusPercent);
   }
 
+  playerTroopRegenBonusEntries(): [PlayerID, number][] {
+    return [...this.playerTroopRegenBonuses.entries()].sort(([a], [b]) =>
+      a.localeCompare(b),
+    );
+  }
+
   cityTroopIncrease(): number {
     return 250_000;
   }
