@@ -745,7 +745,7 @@ export class AccountModal extends BaseModal {
       .provisional=${view.provisional}
       .ffaRating=${ffaRating}
       .openKey=${`account-${this.openCount}`}
-      ?prestigeable=${!ClientEnv.selfHosted()}
+      ?prestigeable=${true}
       @prestige-request=${this.handlePrestigeRequest}
     ></profile-card>`;
   }
